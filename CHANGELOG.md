@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8
+
+- Use nhentai API v2 gallery endpoint before falling back to the legacy API and HTML.
+- Parse title objects from several possible v2 JSON wrapper shapes.
+
 ## 1.7
 
 - Store title-fetch diagnostics on failed history items.

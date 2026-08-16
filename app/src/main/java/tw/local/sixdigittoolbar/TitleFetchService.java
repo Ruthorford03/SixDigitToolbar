@@ -58,35 +58,43 @@ public class TitleFetchService extends IntentService {
     }
 
     private static FetchResult fetchTitle(String code, String urlText) {
-        FetchResult api = fetchJapaneseTitleFromApi(code);
-        if (isUsefulTitle(api.title)) {
-            return api;
+        FetchResult apiV2 = fetchJapaneseTitleFromApi(code, true);
+        if (isUsefulTitle(apiV2.title)) {
+            return apiV2;
+        }
+        FetchResult apiV1 = fetchJapaneseTitleFromApi(code, false);
+        if (isUsefulTitle(apiV1.title)) {
+            return apiV1;
         }
         FetchResult html = fetchTitleFromHtml(urlText);
         if (isUsefulTitle(html.title)) {
             return html;
         }
-        return new FetchResult("標題讀取失敗", joinDiagnostics(api.diagnostic, html.diagnostic));
+        return new FetchResult("標題讀取失敗",
+                joinDiagnostics(joinDiagnostics(apiV2.diagnostic, apiV1.diagnostic), html.diagnostic));
     }
 
-    private static FetchResult fetchJapaneseTitleFromApi(String code) {
+    private static FetchResult fetchJapaneseTitleFromApi(String code, boolean v2) {
         if (code == null || code.length() == 0) {
             return new FetchResult("", "api: empty code");
         }
 
         HttpURLConnection connection = null;
+        String label = v2 ? "apiV2" : "apiV1";
         try {
-            URL url = new URL("https://nhentai.net/api/gallery/" + code);
+            URL url = new URL(v2
+                    ? "https://nhentai.net/api/v2/galleries/" + code
+                    : "https://nhentai.net/api/gallery/" + code);
             connection = openConnection(url);
             int status = connection.getResponseCode();
             String json = readResponse(connection, 120000);
             if (status < 200 || status >= 300) {
-                return new FetchResult("", "api HTTP " + status + " " + summarize(json));
+                return new FetchResult("", label + " HTTP " + status + " " + summarize(json));
             }
             JSONObject root = new JSONObject(json);
-            JSONObject title = root.optJSONObject("title");
+            JSONObject title = findTitleObject(root);
             if (title == null) {
-                return new FetchResult("", "api HTTP " + status + " missing title object " + summarize(json));
+                return new FetchResult("", label + " HTTP " + status + " missing title object " + summarize(json));
             }
 
             String japanese = title.optString("japanese", "").trim();
@@ -102,14 +110,36 @@ public class TitleFetchService extends IntentService {
             String english = title.optString("english", "").trim();
             return english.length() > 0
                     ? new FetchResult(english, "")
-                    : new FetchResult("", "api HTTP " + status + " title fields empty");
+                    : new FetchResult("", label + " HTTP " + status + " title fields empty");
         } catch (Exception exception) {
-            return new FetchResult("", "api " + describe(exception));
+            return new FetchResult("", label + " " + describe(exception));
         } finally {
             if (connection != null) {
                 connection.disconnect();
             }
         }
+    }
+
+    private static JSONObject findTitleObject(JSONObject root) {
+        JSONObject title = root.optJSONObject("title");
+        if (title != null) {
+            return title;
+        }
+
+        JSONObject data = root.optJSONObject("data");
+        if (data != null) {
+            title = data.optJSONObject("title");
+            if (title != null) {
+                return title;
+            }
+            JSONObject gallery = data.optJSONObject("gallery");
+            if (gallery != null) {
+                return gallery.optJSONObject("title");
+            }
+        }
+
+        JSONObject gallery = root.optJSONObject("gallery");
+        return gallery == null ? null : gallery.optJSONObject("title");
     }
 
     private static FetchResult fetchTitleFromHtml(String urlText) {
