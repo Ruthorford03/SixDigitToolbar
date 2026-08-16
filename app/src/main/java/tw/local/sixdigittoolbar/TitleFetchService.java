@@ -25,7 +25,10 @@ public class TitleFetchService extends IntentService {
     }
 
     static void fetch(Context context, String code, String url) {
-        HistoryStore.upsert(context, code, "標題讀取中", url);
+        if (!HistoryStore.prepareTitleFetch(context, code, url)) {
+            return;
+        }
+
         final Context appContext = context.getApplicationContext();
         final String stableCode = code;
         final String stableUrl = url;
@@ -87,7 +90,7 @@ public class TitleFetchService extends IntentService {
                     : "https://nhentai.net/api/gallery/" + code);
             connection = openConnection(url);
             int status = connection.getResponseCode();
-            String json = readResponse(connection, 120000);
+            String json = readResponse(connection, 30000);
             if (status < 200 || status >= 300) {
                 return new FetchResult("", label + " HTTP " + status + " " + summarize(json));
             }
@@ -148,7 +151,7 @@ public class TitleFetchService extends IntentService {
             URL url = new URL(urlText);
             connection = openConnection(url);
             int status = connection.getResponseCode();
-            String html = readResponse(connection, 120000);
+            String html = readResponse(connection, 60000);
             if (status < 200 || status >= 300) {
                 return new FetchResult("", "html HTTP " + status + " " + summarize(html));
             }
@@ -168,8 +171,9 @@ public class TitleFetchService extends IntentService {
 
     private static HttpURLConnection openConnection(URL url) throws Exception {
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-        connection.setConnectTimeout(10000);
-        connection.setReadTimeout(10000);
+        connection.setConnectTimeout(6000);
+        connection.setReadTimeout(8000);
+        connection.setUseCaches(false);
         connection.setRequestProperty("User-Agent", "Mozilla/5.0");
         connection.setRequestProperty("Accept", "application/json,text/html,*/*");
         return connection;

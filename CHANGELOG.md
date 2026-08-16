@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0
+
+- Avoid title network fetches when a useful title is already cached.
+- Throttle repeated title fetch failures and in-progress fetches.
+- Reduce title fetch timeouts and response read limits.
+- Avoid initial duplicate history rendering.
+- Limit Accessibility paste-helper retries and lower event frequency.
+
 ## 1.9
 
 - Keep the clipboard-first flow and make it the primary screen action.

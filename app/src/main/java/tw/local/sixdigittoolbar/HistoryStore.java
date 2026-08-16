@@ -13,6 +13,8 @@ final class HistoryStore {
     private static final String PREFS = "history";
     private static final String KEY_ITEMS = "items";
     private static final int MAX_ITEMS = 50;
+    private static final long FETCH_IN_PROGRESS_COOLDOWN_MS = 120000;
+    private static final long FAILED_FETCH_COOLDOWN_MS = 1800000;
 
     private HistoryStore() {
     }
@@ -38,6 +40,47 @@ final class HistoryStore {
         }
 
         save(context, next);
+    }
+
+    static synchronized boolean prepareTitleFetch(Context context, String code, String url) {
+        if (code == null || code.length() == 0) {
+            return false;
+        }
+
+        HistoryEntry existing = find(context, code);
+        long now = System.currentTimeMillis();
+        if (existing != null) {
+            if (isUsefulTitle(existing.title)) {
+                upsert(context, existing.code, existing.title, url, "");
+                return false;
+            }
+            if ("標題讀取中".equals(existing.title) && now - existing.timestamp < FETCH_IN_PROGRESS_COOLDOWN_MS) {
+                return false;
+            }
+            if ("標題讀取失敗".equals(existing.title)
+                    && existing.diagnostic.indexOf("apiV2") >= 0
+                    && now - existing.timestamp < FAILED_FETCH_COOLDOWN_MS) {
+                return false;
+            }
+        }
+
+        upsert(context, code, "標題讀取中", url, "");
+        return true;
+    }
+
+    static synchronized HistoryEntry find(Context context, String code) {
+        if (code == null) {
+            return null;
+        }
+
+        List<HistoryEntry> entries = list(context);
+        for (int i = 0; i < entries.size(); i++) {
+            HistoryEntry entry = entries.get(i);
+            if (code.equals(entry.code)) {
+                return entry;
+            }
+        }
+        return null;
     }
 
     static synchronized boolean updateTitle(Context context, String code, String title) {

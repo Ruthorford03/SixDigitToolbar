@@ -9,13 +9,23 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class WnacgAccessibilityService extends AccessibilityService {
+    private static final int MAX_ATTEMPTS_PER_TEXT = 30;
+
     private long lastAttemptTime;
+    private String lastPendingText = "";
+    private int attemptsForPendingText;
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         String pending = WnacgPasteStore.getPending(this);
         if (!HistoryStore.isUsefulTitle(pending)) {
+            resetAttempts();
             return;
+        }
+
+        if (!pending.equals(lastPendingText)) {
+            lastPendingText = pending;
+            attemptsForPendingText = 0;
         }
 
         CharSequence packageName = event == null ? null : event.getPackageName();
@@ -24,10 +34,16 @@ public class WnacgAccessibilityService extends AccessibilityService {
         }
 
         long now = System.currentTimeMillis();
-        if (now - lastAttemptTime < 600) {
+        if (now - lastAttemptTime < 1000) {
             return;
         }
         lastAttemptTime = now;
+        attemptsForPendingText++;
+        if (attemptsForPendingText > MAX_ATTEMPTS_PER_TEXT) {
+            WnacgPasteStore.clear(this);
+            resetAttempts();
+            return;
+        }
 
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) {
@@ -36,6 +52,7 @@ public class WnacgAccessibilityService extends AccessibilityService {
 
         if (pasteIntoSearch(root, pending)) {
             WnacgPasteStore.clear(this);
+            resetAttempts();
         }
     }
 
@@ -123,5 +140,10 @@ public class WnacgAccessibilityService extends AccessibilityService {
 
     private String toText(CharSequence text) {
         return text == null ? "" : text.toString();
+    }
+
+    private void resetAttempts() {
+        lastPendingText = "";
+        attemptsForPendingText = 0;
     }
 }

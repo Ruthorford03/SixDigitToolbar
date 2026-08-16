@@ -193,8 +193,6 @@ public class SettingsActivity extends Activity {
         root.addView(historyContainer, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        renderHistory();
     }
 
     private void renderHistory() {
