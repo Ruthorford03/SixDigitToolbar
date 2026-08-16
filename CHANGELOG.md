@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7
+
+- Store title-fetch diagnostics on failed history items.
+- Show HTTP status, exception type, and response snippets for nhentai title fetch failures.
+
 ## 1.6
 
 - Add an optional Accessibility paste helper for wnacg search fields.

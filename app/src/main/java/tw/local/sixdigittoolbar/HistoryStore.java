@@ -18,13 +18,17 @@ final class HistoryStore {
     }
 
     static synchronized void upsert(Context context, String code, String title, String url) {
+        upsert(context, code, title, url, "");
+    }
+
+    static synchronized void upsert(Context context, String code, String title, String url, String diagnostic) {
         if (code == null || code.length() == 0) {
             return;
         }
 
         ArrayList<HistoryEntry> current = new ArrayList<HistoryEntry>(list(context));
         ArrayList<HistoryEntry> next = new ArrayList<HistoryEntry>();
-        next.add(new HistoryEntry(code, cleanTitle(title), url, System.currentTimeMillis()));
+        next.add(new HistoryEntry(code, cleanTitle(title), url, cleanDiagnostic(diagnostic), System.currentTimeMillis()));
 
         for (int i = 0; i < current.size() && next.size() < MAX_ITEMS; i++) {
             HistoryEntry entry = current.get(i);
@@ -45,7 +49,7 @@ final class HistoryStore {
         for (int i = 0; i < current.size(); i++) {
             HistoryEntry entry = current.get(i);
             if (code.equals(entry.code)) {
-                current.set(i, new HistoryEntry(entry.code, title.trim(), entry.url, System.currentTimeMillis()));
+                current.set(i, new HistoryEntry(entry.code, title.trim(), entry.url, "", System.currentTimeMillis()));
                 save(context, current);
                 return true;
             }
@@ -62,7 +66,7 @@ final class HistoryStore {
         for (int i = 0; i < current.size(); i++) {
             HistoryEntry entry = current.get(i);
             if (!isUsefulTitle(entry.title)) {
-                current.set(i, new HistoryEntry(entry.code, title.trim(), entry.url, System.currentTimeMillis()));
+                current.set(i, new HistoryEntry(entry.code, title.trim(), entry.url, "", System.currentTimeMillis()));
                 save(context, current);
                 return true;
             }
@@ -82,6 +86,7 @@ final class HistoryStore {
                         object.optString("code"),
                         object.optString("title"),
                         object.optString("url"),
+                        object.optString("diagnostic"),
                         object.optLong("timestamp")));
             }
         } catch (Exception ignored) {
@@ -105,6 +110,7 @@ final class HistoryStore {
                 object.put("code", entry.code);
                 object.put("title", entry.title);
                 object.put("url", entry.url);
+                object.put("diagnostic", entry.diagnostic);
                 object.put("timestamp", entry.timestamp);
                 array.put(object);
             } catch (Exception ignored) {
@@ -122,6 +128,14 @@ final class HistoryStore {
             return "標題讀取中";
         }
         return title.trim();
+    }
+
+    private static String cleanDiagnostic(String diagnostic) {
+        if (diagnostic == null) {
+            return "";
+        }
+        String clean = diagnostic.trim();
+        return clean.length() > 500 ? clean.substring(0, 500) : clean;
     }
 
     static boolean isUsefulTitle(String title) {

@@ -38,7 +38,8 @@ public class TitleFetchService extends IntentService {
             new Thread(new Runnable() {
                 @Override
                 public void run() {
-                    HistoryStore.upsert(appContext, stableCode, fetchTitle(stableCode, stableUrl), stableUrl);
+                    FetchResult result = fetchTitle(stableCode, stableUrl);
+                    HistoryStore.upsert(appContext, stableCode, result.title, stableUrl, result.diagnostic);
                 }
             }).start();
         }
@@ -52,47 +53,58 @@ public class TitleFetchService extends IntentService {
 
         String code = intent.getStringExtra(EXTRA_CODE);
         String url = intent.getStringExtra(EXTRA_URL);
-        String title = fetchTitle(code, url);
-        HistoryStore.upsert(this, code, title, url);
+        FetchResult result = fetchTitle(code, url);
+        HistoryStore.upsert(this, code, result.title, url, result.diagnostic);
     }
 
-    private static String fetchTitle(String code, String urlText) {
-        String apiTitle = fetchJapaneseTitleFromApi(code);
-        if (isUsefulTitle(apiTitle)) {
-            return apiTitle;
+    private static FetchResult fetchTitle(String code, String urlText) {
+        FetchResult api = fetchJapaneseTitleFromApi(code);
+        if (isUsefulTitle(api.title)) {
+            return api;
         }
-        return fetchTitleFromHtml(urlText);
+        FetchResult html = fetchTitleFromHtml(urlText);
+        if (isUsefulTitle(html.title)) {
+            return html;
+        }
+        return new FetchResult("標題讀取失敗", joinDiagnostics(api.diagnostic, html.diagnostic));
     }
 
-    private static String fetchJapaneseTitleFromApi(String code) {
+    private static FetchResult fetchJapaneseTitleFromApi(String code) {
         if (code == null || code.length() == 0) {
-            return "";
+            return new FetchResult("", "api: empty code");
         }
 
         HttpURLConnection connection = null;
         try {
             URL url = new URL("https://nhentai.net/api/gallery/" + code);
             connection = openConnection(url);
+            int status = connection.getResponseCode();
             String json = readResponse(connection, 120000);
+            if (status < 200 || status >= 300) {
+                return new FetchResult("", "api HTTP " + status + " " + summarize(json));
+            }
             JSONObject root = new JSONObject(json);
             JSONObject title = root.optJSONObject("title");
             if (title == null) {
-                return "";
+                return new FetchResult("", "api HTTP " + status + " missing title object " + summarize(json));
             }
 
             String japanese = title.optString("japanese", "").trim();
             if (japanese.length() > 0) {
-                return japanese;
+                return new FetchResult(japanese, "");
             }
 
             String pretty = title.optString("pretty", "").trim();
             if (pretty.length() > 0) {
-                return pretty;
+                return new FetchResult(pretty, "");
             }
 
-            return title.optString("english", "").trim();
-        } catch (Exception ignored) {
-            return "";
+            String english = title.optString("english", "").trim();
+            return english.length() > 0
+                    ? new FetchResult(english, "")
+                    : new FetchResult("", "api HTTP " + status + " title fields empty");
+        } catch (Exception exception) {
+            return new FetchResult("", "api " + describe(exception));
         } finally {
             if (connection != null) {
                 connection.disconnect();
@@ -100,15 +112,23 @@ public class TitleFetchService extends IntentService {
         }
     }
 
-    private static String fetchTitleFromHtml(String urlText) {
+    private static FetchResult fetchTitleFromHtml(String urlText) {
         HttpURLConnection connection = null;
         try {
             URL url = new URL(urlText);
             connection = openConnection(url);
+            int status = connection.getResponseCode();
             String html = readResponse(connection, 120000);
-            return parseTitle(html.toString());
-        } catch (Exception ignored) {
-            return "標題讀取失敗";
+            if (status < 200 || status >= 300) {
+                return new FetchResult("", "html HTTP " + status + " " + summarize(html));
+            }
+            String title = parseTitle(html);
+            if (isUsefulTitle(title)) {
+                return new FetchResult(title, "");
+            }
+            return new FetchResult("", "html HTTP " + status + " no title " + summarize(html));
+        } catch (Exception exception) {
+            return new FetchResult("", "html " + describe(exception));
         } finally {
             if (connection != null) {
                 connection.disconnect();
@@ -126,7 +146,12 @@ public class TitleFetchService extends IntentService {
     }
 
     private static String readResponse(HttpURLConnection connection, int maxLength) throws Exception {
-        InputStream input = connection.getInputStream();
+        InputStream input = connection.getResponseCode() >= 400
+                ? connection.getErrorStream()
+                : connection.getInputStream();
+        if (input == null) {
+            return "";
+        }
         BufferedReader reader = new BufferedReader(new InputStreamReader(input, "UTF-8"));
         StringBuilder body = new StringBuilder();
         String line;
@@ -180,5 +205,46 @@ public class TitleFetchService extends IntentService {
                 .replace("&#39;", "'")
                 .replace("&lt;", "<")
                 .replace("&gt;", ">");
+    }
+
+    private static String describe(Exception exception) {
+        String message = exception.getMessage();
+        String name = exception.getClass().getSimpleName();
+        return message == null || message.length() == 0 ? name : name + ": " + sanitize(message);
+    }
+
+    private static String summarize(String text) {
+        if (text == null) {
+            return "";
+        }
+        String clean = sanitize(stripTags(text));
+        return clean.length() > 180 ? clean.substring(0, 180) : clean;
+    }
+
+    private static String sanitize(String text) {
+        return text.replace('\n', ' ')
+                .replace('\r', ' ')
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private static String joinDiagnostics(String first, String second) {
+        if (first == null || first.length() == 0) {
+            return second == null ? "" : second;
+        }
+        if (second == null || second.length() == 0) {
+            return first;
+        }
+        return first + " | " + second;
+    }
+
+    private static final class FetchResult {
+        final String title;
+        final String diagnostic;
+
+        FetchResult(String title, String diagnostic) {
+            this.title = title == null ? "" : title;
+            this.diagnostic = diagnostic == null ? "" : diagnostic;
+        }
     }
 }

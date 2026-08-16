@@ -209,7 +209,10 @@ public class SettingsActivity extends Activity {
         row.setPadding(0, dp(10), 0, dp(10));
 
         TextView text = new TextView(this);
-        text.setText(entry.code + "\n" + entry.title + "\n" + formatTime(entry.timestamp));
+        String diagnostic = entry.diagnostic == null || entry.diagnostic.length() == 0
+                ? ""
+                : "\n診斷：" + entry.diagnostic;
+        text.setText(entry.code + "\n" + entry.title + diagnostic + "\n" + formatTime(entry.timestamp));
         text.setTextSize(15);
         row.addView(text, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
