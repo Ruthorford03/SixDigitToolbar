@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4
+
+- Store the Japanese title from nhentai gallery metadata.
+- Fall back to the page's Japanese title block before using the browser title.
+
 ## 1.3
 
 - Use a stable signing key for future updates.
