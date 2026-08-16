@@ -12,8 +12,14 @@ import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
 
 public class SettingsActivity extends Activity {
     @Override
@@ -21,10 +27,14 @@ public class SettingsActivity extends Activity {
         super.onCreate(savedInstanceState);
 
         int padding = dp(20);
+        ScrollView scrollView = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER_VERTICAL);
+        root.setGravity(Gravity.TOP);
         root.setPadding(padding, padding, padding, padding);
+        scrollView.addView(root, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView title = new TextView(this);
         title.setText("nhentai快捷");
@@ -83,8 +93,9 @@ public class SettingsActivity extends Activity {
                     Toast.makeText(SettingsActivity.this, "剪貼簿沒有 6 位數字", Toast.LENGTH_LONG).show();
                     return;
                 }
-                MainActivity.openBrowser(SettingsActivity.this,
-                        MainActivity.buildTargetUrl(UrlStore.getBaseUrl(SettingsActivity.this), code));
+                String url = MainActivity.buildTargetUrl(UrlStore.getBaseUrl(SettingsActivity.this), code);
+                MainActivity.openBrowser(SettingsActivity.this, url);
+                TitleFetchService.fetch(SettingsActivity.this, code, url);
             }
         });
         LinearLayout.LayoutParams clipboardButtonParams = new LinearLayout.LayoutParams(
@@ -93,7 +104,109 @@ public class SettingsActivity extends Activity {
         clipboardButtonParams.topMargin = dp(8);
         root.addView(openClipboard, clipboardButtonParams);
 
-        setContentView(root);
+        addHistory(root);
+
+        setContentView(scrollView);
+    }
+
+    private void addHistory(LinearLayout root) {
+        TextView historyTitle = new TextView(this);
+        historyTitle.setText("查詢紀錄");
+        historyTitle.setTextSize(18);
+        historyTitle.setPadding(0, dp(24), 0, dp(8));
+        root.addView(historyTitle, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        List<HistoryEntry> entries = HistoryStore.list(this);
+        if (entries.size() == 0) {
+            TextView empty = new TextView(this);
+            empty.setText("還沒有紀錄");
+            empty.setTextSize(15);
+            root.addView(empty, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT));
+            return;
+        }
+
+        for (int i = 0; i < entries.size(); i++) {
+            addHistoryRow(root, entries.get(i));
+        }
+
+        Button clear = new Button(this);
+        clear.setText("清除紀錄");
+        clear.setAllCaps(false);
+        clear.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                HistoryStore.clear(SettingsActivity.this);
+                recreate();
+            }
+        });
+        LinearLayout.LayoutParams clearParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        clearParams.topMargin = dp(12);
+        root.addView(clear, clearParams);
+    }
+
+    private void addHistoryRow(LinearLayout root, final HistoryEntry entry) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setPadding(0, dp(10), 0, dp(10));
+
+        TextView text = new TextView(this);
+        text.setText(entry.code + "\n" + entry.title + "\n" + formatTime(entry.timestamp));
+        text.setTextSize(15);
+        row.addView(text, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setPadding(0, dp(6), 0, 0);
+
+        Button open = new Button(this);
+        open.setText("前往");
+        open.setAllCaps(false);
+        open.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                String url = entry.url == null || entry.url.length() == 0
+                        ? MainActivity.buildTargetUrl(UrlStore.getBaseUrl(SettingsActivity.this), entry.code)
+                        : entry.url;
+                MainActivity.openBrowser(SettingsActivity.this, url);
+            }
+        });
+        actions.addView(open, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+
+        Button wnacg = new Button(this);
+        wnacg.setText("搜尋wnacg");
+        wnacg.setAllCaps(false);
+        wnacg.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                WnacgLauncher.search(SettingsActivity.this, entry.title);
+            }
+        });
+        actions.addView(wnacg, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+
+        row.addView(actions, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        root.addView(row, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+    }
+
+    private String formatTime(long timestamp) {
+        if (timestamp <= 0) {
+            return "";
+        }
+        return new SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(new Date(timestamp));
     }
 
     private String readClipboardText() {

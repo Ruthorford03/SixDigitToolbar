@@ -27,6 +27,7 @@ public class MainActivity extends Activity {
         }
 
         openBrowser(buildTargetUrl(UrlStore.getBaseUrl(this), code));
+        TitleFetchService.fetch(this, code, buildTargetUrl(UrlStore.getBaseUrl(this), code));
         finish();
     }
 
