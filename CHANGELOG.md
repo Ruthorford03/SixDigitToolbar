@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.9
+
+- Keep the clipboard-first flow and make it the primary screen action.
+- Show detected clipboard code near the top of the screen.
+- Collapse URL settings behind a settings button.
+- Collapse long title-fetch diagnostics behind a per-entry detail button.
+
 ## 1.8
 
 - Use nhentai API v2 gallery endpoint before falling back to the legacy API and HTML.

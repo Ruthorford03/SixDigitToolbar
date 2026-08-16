@@ -23,6 +23,7 @@ import java.util.Locale;
 
 public class SettingsActivity extends Activity {
     private LinearLayout historyContainer;
+    private TextView clipboardStatus;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -46,47 +47,17 @@ public class SettingsActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        TextView hint = new TextView(this);
-        hint.setText("輸入基礎網址。可用 {code} 指定 6 位數放置位置；沒有 {code} 時會直接接在網址後方。");
-        hint.setTextSize(15);
-        hint.setPadding(0, dp(12), 0, dp(12));
-        root.addView(hint, new LinearLayout.LayoutParams(
+        clipboardStatus = new TextView(this);
+        clipboardStatus.setTextSize(16);
+        clipboardStatus.setPadding(0, dp(12), 0, dp(8));
+        root.addView(clipboardStatus, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        final EditText urlInput = new EditText(this);
-        urlInput.setSingleLine(true);
-        urlInput.setInputType(InputType.TYPE_TEXT_VARIATION_URI);
-        urlInput.setText(UrlStore.getBaseUrl(this));
-        urlInput.setSelectAllOnFocus(false);
-        root.addView(urlInput, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        Button save = new Button(this);
-        save.setText("儲存");
-        save.setAllCaps(false);
-        save.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                String url = urlInput.getText().toString().trim();
-                if (!url.startsWith("http://") && !url.startsWith("https://")) {
-                    Toast.makeText(SettingsActivity.this, "網址必須以 http:// 或 https:// 開頭", Toast.LENGTH_LONG).show();
-                    return;
-                }
-                UrlStore.setBaseUrl(SettingsActivity.this, url);
-                Toast.makeText(SettingsActivity.this, "已儲存", Toast.LENGTH_SHORT).show();
-            }
-        });
-        LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT);
-        buttonParams.topMargin = dp(16);
-        root.addView(save, buttonParams);
 
         Button openClipboard = new Button(this);
         openClipboard.setText("前往剪貼簿代碼");
         openClipboard.setAllCaps(false);
+        openClipboard.setTextSize(18);
         openClipboard.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -103,7 +74,7 @@ public class SettingsActivity extends Activity {
         LinearLayout.LayoutParams clipboardButtonParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
-        clipboardButtonParams.topMargin = dp(8);
+        clipboardButtonParams.topMargin = dp(4);
         root.addView(openClipboard, clipboardButtonParams);
 
         Button pasteTitle = new Button(this);
@@ -136,6 +107,7 @@ public class SettingsActivity extends Activity {
         accessibilityParams.topMargin = dp(8);
         root.addView(accessibility, accessibilityParams);
 
+        addUrlSettings(root);
         addHistory(root);
 
         setContentView(scrollView);
@@ -144,7 +116,67 @@ public class SettingsActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        updateClipboardStatus();
         renderHistory();
+    }
+
+    private void addUrlSettings(LinearLayout root) {
+        final Button toggle = new Button(this);
+        toggle.setText("設定網址");
+        toggle.setAllCaps(false);
+        root.addView(toggle, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        final LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setVisibility(View.GONE);
+        root.addView(panel, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        TextView hint = new TextView(this);
+        hint.setText("目前：" + UrlStore.getBaseUrl(this) + "\n可用 {code} 指定 6 位數位置；沒有 {code} 時會直接接在網址後方。");
+        hint.setTextSize(14);
+        hint.setPadding(0, dp(8), 0, dp(8));
+        panel.addView(hint, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        final EditText urlInput = new EditText(this);
+        urlInput.setSingleLine(true);
+        urlInput.setInputType(InputType.TYPE_TEXT_VARIATION_URI);
+        urlInput.setText(UrlStore.getBaseUrl(this));
+        urlInput.setSelectAllOnFocus(false);
+        panel.addView(urlInput, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        Button save = new Button(this);
+        save.setText("儲存網址");
+        save.setAllCaps(false);
+        save.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                String url = urlInput.getText().toString().trim();
+                if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                    Toast.makeText(SettingsActivity.this, "網址必須以 http:// 或 https:// 開頭", Toast.LENGTH_LONG).show();
+                    return;
+                }
+                UrlStore.setBaseUrl(SettingsActivity.this, url);
+                Toast.makeText(SettingsActivity.this, "已儲存", Toast.LENGTH_SHORT).show();
+            }
+        });
+        panel.addView(save, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        toggle.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                panel.setVisibility(panel.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE);
+            }
+        });
     }
 
     private void addHistory(LinearLayout root) {
@@ -209,10 +241,7 @@ public class SettingsActivity extends Activity {
         row.setPadding(0, dp(10), 0, dp(10));
 
         TextView text = new TextView(this);
-        String diagnostic = entry.diagnostic == null || entry.diagnostic.length() == 0
-                ? ""
-                : "\n診斷：" + entry.diagnostic;
-        text.setText(entry.code + "\n" + entry.title + diagnostic + "\n" + formatTime(entry.timestamp));
+        text.setText(entry.code + "\n" + entry.title + "\n" + formatTime(entry.timestamp));
         text.setTextSize(15);
         row.addView(text, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -265,6 +294,29 @@ public class SettingsActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        if (entry.diagnostic != null && entry.diagnostic.length() > 0) {
+            final TextView diagnosticText = new TextView(this);
+            diagnosticText.setText("診斷：" + entry.diagnostic);
+            diagnosticText.setTextSize(13);
+            diagnosticText.setVisibility(View.GONE);
+
+            Button diagnosticToggle = new Button(this);
+            diagnosticToggle.setText("診斷詳情");
+            diagnosticToggle.setAllCaps(false);
+            diagnosticToggle.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                    diagnosticText.setVisibility(diagnosticText.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE);
+                }
+            });
+            row.addView(diagnosticToggle, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT));
+            row.addView(diagnosticText, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+
         root.addView(row, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -290,6 +342,14 @@ public class SettingsActivity extends Activity {
 
         CharSequence text = clip.getItemAt(0).coerceToText(this);
         return text == null ? "" : text.toString();
+    }
+
+    private void updateClipboardStatus() {
+        if (clipboardStatus == null) {
+            return;
+        }
+        String code = MainActivity.extractSixDigitCode(readClipboardText());
+        clipboardStatus.setText(code == null ? "剪貼簿：沒有偵測到 6 位數" : "剪貼簿：" + code);
     }
 
     private void updateTitleFromClipboard(String code) {
