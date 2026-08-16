@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Locale;
 
 public class SettingsActivity extends Activity {
+    private LinearLayout historyContainer;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -94,8 +96,8 @@ public class SettingsActivity extends Activity {
                     return;
                 }
                 String url = MainActivity.buildTargetUrl(UrlStore.getBaseUrl(SettingsActivity.this), code);
-                MainActivity.openBrowser(SettingsActivity.this, url);
                 TitleFetchService.fetch(SettingsActivity.this, code, url);
+                MainActivity.openBrowser(SettingsActivity.this, url);
             }
         });
         LinearLayout.LayoutParams clipboardButtonParams = new LinearLayout.LayoutParams(
@@ -109,6 +111,12 @@ public class SettingsActivity extends Activity {
         setContentView(scrollView);
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        renderHistory();
+    }
+
     private void addHistory(LinearLayout root) {
         TextView historyTitle = new TextView(this);
         historyTitle.setText("查詢紀錄");
@@ -118,19 +126,34 @@ public class SettingsActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        historyContainer = new LinearLayout(this);
+        historyContainer.setOrientation(LinearLayout.VERTICAL);
+        root.addView(historyContainer, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        renderHistory();
+    }
+
+    private void renderHistory() {
+        if (historyContainer == null) {
+            return;
+        }
+
+        historyContainer.removeAllViews();
         List<HistoryEntry> entries = HistoryStore.list(this);
         if (entries.size() == 0) {
             TextView empty = new TextView(this);
             empty.setText("還沒有紀錄");
             empty.setTextSize(15);
-            root.addView(empty, new LinearLayout.LayoutParams(
+            historyContainer.addView(empty, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT));
             return;
         }
 
         for (int i = 0; i < entries.size(); i++) {
-            addHistoryRow(root, entries.get(i));
+            addHistoryRow(historyContainer, entries.get(i));
         }
 
         Button clear = new Button(this);
@@ -147,7 +170,7 @@ public class SettingsActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
         clearParams.topMargin = dp(12);
-        root.addView(clear, clearParams);
+        historyContainer.addView(clear, clearParams);
     }
 
     private void addHistoryRow(LinearLayout root, final HistoryEntry entry) {

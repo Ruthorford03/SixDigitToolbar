@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3
+
+- Use a stable signing key for future updates.
+- Record history before opening the browser.
+- Refresh history whenever the settings screen resumes.
+- Add a fallback title-fetch thread if Android rejects service startup.
+
 ## 1.2
 
 - Add query history for nhentai codes.

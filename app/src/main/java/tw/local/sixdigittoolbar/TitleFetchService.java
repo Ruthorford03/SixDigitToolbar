@@ -23,10 +23,22 @@ public class TitleFetchService extends IntentService {
 
     static void fetch(Context context, String code, String url) {
         HistoryStore.upsert(context, code, "標題讀取中", url);
-        Intent intent = new Intent(context, TitleFetchService.class);
+        final Context appContext = context.getApplicationContext();
+        final String stableCode = code;
+        final String stableUrl = url;
+        Intent intent = new Intent(appContext, TitleFetchService.class);
         intent.putExtra(EXTRA_CODE, code);
         intent.putExtra(EXTRA_URL, url);
-        context.startService(intent);
+        try {
+            appContext.startService(intent);
+        } catch (Exception ignored) {
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    HistoryStore.upsert(appContext, stableCode, fetchTitle(stableUrl), stableUrl);
+                }
+            }).start();
+        }
     }
 
     @Override
