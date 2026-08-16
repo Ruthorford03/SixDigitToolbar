@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6
+
+- Add an optional Accessibility paste helper for wnacg search fields.
+- Launch wnacg directly and let the paste helper fill the search field when enabled.
+- Add a settings shortcut for enabling the paste helper.
+
 ## 1.5
 
 - Allow selected/shared title text to update an existing failed history item.

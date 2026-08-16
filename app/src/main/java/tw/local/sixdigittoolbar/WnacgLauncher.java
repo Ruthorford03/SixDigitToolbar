@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.provider.Settings;
 import android.widget.Toast;
 
 import java.util.List;
@@ -21,39 +22,27 @@ final class WnacgLauncher {
         }
 
         copyToClipboard(context, title.trim());
+        WnacgPasteStore.setPending(context, title.trim());
         String packageName = findWnacgPackage(context);
         if (packageName == null) {
             Toast.makeText(context, "已複製作品名稱，但找不到 wnacg app", Toast.LENGTH_LONG).show();
             return;
         }
 
-        if (!sendTextToPackage(context, packageName, title.trim())) {
-            launchPackage(context, packageName);
-        }
-        Toast.makeText(context, "已複製作品名稱並開啟 wnacg", Toast.LENGTH_LONG).show();
+        launchPackage(context, packageName);
+        Toast.makeText(context, "已複製作品名稱並開啟 wnacg；若已啟用貼上助手會自動填入搜尋欄", Toast.LENGTH_LONG).show();
+    }
+
+    static void openAccessibilitySettings(Context context) {
+        Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        context.startActivity(intent);
     }
 
     private static void copyToClipboard(Context context, String text) {
         ClipboardManager clipboard = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
         if (clipboard != null) {
             clipboard.setPrimaryClip(ClipData.newPlainText("作品名稱", text));
-        }
-    }
-
-    private static boolean sendTextToPackage(Context context, String packageName, String text) {
-        try {
-            Intent intent = new Intent(Intent.ACTION_SEND);
-            intent.setType("text/plain");
-            intent.setPackage(packageName);
-            intent.putExtra(Intent.EXTRA_TEXT, text);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            if (intent.resolveActivity(context.getPackageManager()) == null) {
-                return false;
-            }
-            context.startActivity(intent);
-            return true;
-        } catch (Exception ignored) {
-            return false;
         }
     }
 

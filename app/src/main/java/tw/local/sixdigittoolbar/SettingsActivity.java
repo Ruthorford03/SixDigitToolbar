@@ -121,6 +121,21 @@ public class SettingsActivity extends Activity {
         pasteTitleParams.topMargin = dp(8);
         root.addView(pasteTitle, pasteTitleParams);
 
+        Button accessibility = new Button(this);
+        accessibility.setText("開啟貼上助手設定");
+        accessibility.setAllCaps(false);
+        accessibility.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                WnacgLauncher.openAccessibilitySettings(SettingsActivity.this);
+            }
+        });
+        LinearLayout.LayoutParams accessibilityParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        accessibilityParams.topMargin = dp(8);
+        root.addView(accessibility, accessibilityParams);
+
         addHistory(root);
 
         setContentView(scrollView);

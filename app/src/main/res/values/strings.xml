@@ -2,5 +2,6 @@
 <resources>
     <string name="app_name">nhentai快捷</string>
     <string name="process_label">前往nhentai</string>
+    <string name="accessibility_service_label">nhentai快捷貼上助手</string>
     <string name="default_base_url">https://nhentai.net/g/</string>
 </resources>
