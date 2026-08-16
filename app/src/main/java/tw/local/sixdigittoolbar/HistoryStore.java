@@ -36,6 +36,40 @@ final class HistoryStore {
         save(context, next);
     }
 
+    static synchronized boolean updateTitle(Context context, String code, String title) {
+        if (code == null || code.length() == 0 || !isUsefulTitle(title)) {
+            return false;
+        }
+
+        ArrayList<HistoryEntry> current = new ArrayList<HistoryEntry>(list(context));
+        for (int i = 0; i < current.size(); i++) {
+            HistoryEntry entry = current.get(i);
+            if (code.equals(entry.code)) {
+                current.set(i, new HistoryEntry(entry.code, title.trim(), entry.url, System.currentTimeMillis()));
+                save(context, current);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static synchronized boolean updateMostRecentFailed(Context context, String title) {
+        if (!isUsefulTitle(title)) {
+            return false;
+        }
+
+        ArrayList<HistoryEntry> current = new ArrayList<HistoryEntry>(list(context));
+        for (int i = 0; i < current.size(); i++) {
+            HistoryEntry entry = current.get(i);
+            if (!isUsefulTitle(entry.title)) {
+                current.set(i, new HistoryEntry(entry.code, title.trim(), entry.url, System.currentTimeMillis()));
+                save(context, current);
+                return true;
+            }
+        }
+        return false;
+    }
+
     static synchronized List<HistoryEntry> list(Context context) {
         ArrayList<HistoryEntry> entries = new ArrayList<HistoryEntry>();
         SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -88,5 +122,12 @@ final class HistoryStore {
             return "標題讀取中";
         }
         return title.trim();
+    }
+
+    static boolean isUsefulTitle(String title) {
+        return title != null
+                && title.trim().length() > 0
+                && !"標題讀取中".equals(title)
+                && !"標題讀取失敗".equals(title);
     }
 }

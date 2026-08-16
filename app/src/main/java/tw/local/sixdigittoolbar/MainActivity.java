@@ -20,8 +20,19 @@ public class MainActivity extends Activity {
         String selectedText = getIncomingText(getIntent());
 
         String code = extractSixDigitCode(selectedText);
+        String title = TitleTextParser.extractLikelyTitle(selectedText);
         if (code == null) {
-            Toast.makeText(this, "請選取剛好 6 位數字", Toast.LENGTH_LONG).show();
+            if (HistoryStore.updateMostRecentFailed(this, title)) {
+                Toast.makeText(this, "已用選取文字更新最近紀錄標題", Toast.LENGTH_LONG).show();
+            } else {
+                Toast.makeText(this, "請選取 6 位數字，或選取作品標題更新紀錄", Toast.LENGTH_LONG).show();
+            }
+            finish();
+            return;
+        }
+
+        if (HistoryStore.isUsefulTitle(title) && HistoryStore.updateTitle(this, code, title)) {
+            Toast.makeText(this, "已更新作品標題", Toast.LENGTH_LONG).show();
             finish();
             return;
         }

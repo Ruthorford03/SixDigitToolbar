@@ -106,6 +106,21 @@ public class SettingsActivity extends Activity {
         clipboardButtonParams.topMargin = dp(8);
         root.addView(openClipboard, clipboardButtonParams);
 
+        Button pasteTitle = new Button(this);
+        pasteTitle.setText("用剪貼簿更新標題");
+        pasteTitle.setAllCaps(false);
+        pasteTitle.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                updateTitleFromClipboard(null);
+            }
+        });
+        LinearLayout.LayoutParams pasteTitleParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        pasteTitleParams.topMargin = dp(8);
+        root.addView(pasteTitle, pasteTitleParams);
+
         addHistory(root);
 
         setContentView(scrollView);
@@ -216,6 +231,18 @@ public class SettingsActivity extends Activity {
         actions.addView(wnacg, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
+        Button paste = new Button(this);
+        paste.setText("貼上標題");
+        paste.setAllCaps(false);
+        paste.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                updateTitleFromClipboard(entry.code);
+            }
+        });
+        actions.addView(paste, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+
         row.addView(actions, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -245,6 +272,32 @@ public class SettingsActivity extends Activity {
 
         CharSequence text = clip.getItemAt(0).coerceToText(this);
         return text == null ? "" : text.toString();
+    }
+
+    private void updateTitleFromClipboard(String code) {
+        String clipboardText = readClipboardText();
+        String title = TitleTextParser.extractLikelyTitle(clipboardText);
+        if (!HistoryStore.isUsefulTitle(title)) {
+            Toast.makeText(this, "剪貼簿沒有可用的作品標題", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        boolean updated;
+        if (code != null) {
+            updated = HistoryStore.updateTitle(this, code, title);
+        } else {
+            String clipboardCode = TitleTextParser.extractCode(clipboardText);
+            updated = clipboardCode != null
+                    ? HistoryStore.updateTitle(this, clipboardCode, title)
+                    : HistoryStore.updateMostRecentFailed(this, title);
+        }
+
+        if (updated) {
+            Toast.makeText(this, "已更新標題", Toast.LENGTH_SHORT).show();
+            renderHistory();
+        } else {
+            Toast.makeText(this, "找不到可更新的紀錄", Toast.LENGTH_LONG).show();
+        }
     }
 
     private int dp(int value) {

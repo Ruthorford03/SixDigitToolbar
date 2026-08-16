@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5
+
+- Allow selected/shared title text to update an existing failed history item.
+- Add clipboard title update actions for failed automatic title fetches.
+- Parse likely Japanese title lines from shared or copied page text.
+
 ## 1.4
 
 - Store the Japanese title from nhentai gallery metadata.
