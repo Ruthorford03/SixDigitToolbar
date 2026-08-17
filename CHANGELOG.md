@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.2
+
+- Added restrained Apple-style entrance, press, expand, and content-update motion.
+- Added native ripple feedback without continuous animation or background work.
+- Respect Android animation-disable and battery-saver settings.
+- Avoid rebuilding query history when its content has not changed.
+
 ## 2.1
 
 - Modernize the main screen with grouped cards, clearer primary actions, and compact history entries.

@@ -1,17 +1,30 @@
 package tw.local.sixdigittoolbar;
 
+import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.text.InputType;
+import android.transition.AutoTransition;
+import android.transition.Transition;
+import android.transition.TransitionManager;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.Interpolator;
+import android.view.animation.PathInterpolator;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -20,6 +33,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -34,22 +48,34 @@ public class SettingsActivity extends Activity {
     private static final int COLOR_PRIMARY_SOFT = Color.rgb(229, 239, 255);
     private static final int COLOR_SUCCESS = Color.rgb(20, 132, 84);
     private static final int COLOR_WARNING = Color.rgb(183, 106, 0);
+    private static final long MOTION_FAST_MS = 100;
+    private static final long MOTION_NORMAL_MS = 260;
 
     private LinearLayout historyContainer;
     private TextView clipboardStatus;
     private TextView clipboardHint;
+    private String lastHistoryFingerprint;
+    private final List<View> entranceViews = new ArrayList<View>();
+    private final Interpolator motionInterpolator = new PathInterpolator(0.2f, 0f, 0f, 1f);
+    private boolean motionEnabled;
+    private ViewGroup rootContainer;
+    private View entranceRoot;
+    private Runnable entranceRunnable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        motionEnabled = shouldUseMotion();
 
         ScrollView scrollView = new ScrollView(this);
         scrollView.setBackgroundColor(COLOR_BG);
+        scrollView.setFillViewport(true);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.TOP);
         root.setPadding(dp(16), dp(18), dp(16), dp(20));
+        rootContainer = root;
         scrollView.addView(root, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -60,6 +86,30 @@ public class SettingsActivity extends Activity {
         addHistory(root);
 
         setContentView(scrollView);
+        playScreenEntrance(root);
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (entranceRoot != null && entranceRunnable != null) {
+            entranceRoot.removeCallbacks(entranceRunnable);
+        }
+        entranceRoot = null;
+        entranceRunnable = null;
+        resetScaleAnimations(rootContainer);
+        for (int i = 0; i < entranceViews.size(); i++) {
+            View view = entranceViews.get(i);
+            view.animate().cancel();
+            view.setAlpha(1f);
+            view.setTranslationY(0f);
+        }
+        if (clipboardStatus != null) {
+            clipboardStatus.animate().cancel();
+            clipboardStatus.setAlpha(1f);
+            clipboardStatus.setScaleX(1f);
+            clipboardStatus.setScaleY(1f);
+        }
     }
 
     @Override
@@ -104,6 +154,7 @@ public class SettingsActivity extends Activity {
         card.addView(clipboardHint, matchWrap());
 
         root.addView(card, cardParams(0));
+        registerEntrance(card);
     }
 
     private void addPrimaryActions(LinearLayout root) {
@@ -155,10 +206,11 @@ public class SettingsActivity extends Activity {
         card.addView(row, rowParams);
 
         root.addView(card, cardParams(dp(12)));
+        registerEntrance(card);
     }
 
     private void addUrlSettings(LinearLayout root) {
-        LinearLayout card = makeCard();
+        final LinearLayout card = makeCard();
 
         final TextView toggle = new TextView(this);
         toggle.setText("設定網址");
@@ -166,6 +218,8 @@ public class SettingsActivity extends Activity {
         toggle.setTextSize(17);
         toggle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         toggle.setGravity(Gravity.CENTER_VERTICAL);
+        toggle.setPadding(0, dp(4), 0, dp(4));
+        attachPressMotion(toggle);
         card.addView(toggle, matchWrap());
 
         final LinearLayout panel = new LinearLayout(this);
@@ -211,12 +265,16 @@ public class SettingsActivity extends Activity {
             @Override
             public void onClick(View view) {
                 boolean show = panel.getVisibility() != View.VISIBLE;
+                beginContentTransition(card);
                 panel.setVisibility(show ? View.VISIBLE : View.GONE);
-                toggle.setText(show ? "設定網址  收合" : "設定網址");
+                toggle.setText(show ? "設定網址    收合" : "設定網址    展開");
             }
         });
 
+        toggle.setText("設定網址    展開");
+
         root.addView(card, cardParams(dp(12)));
+        registerEntrance(card);
     }
 
     private void addHistory(LinearLayout root) {
@@ -247,12 +305,14 @@ public class SettingsActivity extends Activity {
         LinearLayout.LayoutParams headerParams = matchWrap();
         headerParams.topMargin = dp(20);
         root.addView(header, headerParams);
+        registerEntrance(header);
 
         historyContainer = new LinearLayout(this);
         historyContainer.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams containerParams = matchWrap();
         containerParams.topMargin = dp(8);
         root.addView(historyContainer, containerParams);
+        registerEntrance(historyContainer);
     }
 
     private void renderHistory() {
@@ -260,8 +320,17 @@ public class SettingsActivity extends Activity {
             return;
         }
 
-        historyContainer.removeAllViews();
         List<HistoryEntry> entries = HistoryStore.list(this);
+        String fingerprint = historyFingerprint(entries);
+        if (fingerprint.equals(lastHistoryFingerprint)) {
+            return;
+        }
+
+        if (lastHistoryFingerprint != null) {
+            beginContentTransition(historyContainer);
+        }
+        lastHistoryFingerprint = fingerprint;
+        historyContainer.removeAllViews();
         if (entries.size() == 0) {
             LinearLayout emptyCard = makeCard();
             TextView empty = new TextView(this);
@@ -279,7 +348,7 @@ public class SettingsActivity extends Activity {
     }
 
     private void addHistoryRow(LinearLayout root, final HistoryEntry entry) {
-        LinearLayout card = makeCard();
+        final LinearLayout card = makeCard();
 
         LinearLayout top = new LinearLayout(this);
         top.setOrientation(LinearLayout.HORIZONTAL);
@@ -366,16 +435,20 @@ public class SettingsActivity extends Activity {
             diagnosticText.setVisibility(View.GONE);
             diagnosticText.setPadding(0, dp(6), 0, 0);
 
-            TextView diagnosticToggle = new TextView(this);
+            final TextView diagnosticToggle = new TextView(this);
             diagnosticToggle.setText("顯示診斷");
             diagnosticToggle.setTextColor(COLOR_PRIMARY);
             diagnosticToggle.setTextSize(13);
             diagnosticToggle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
             diagnosticToggle.setPadding(0, dp(10), 0, 0);
+            attachPressMotion(diagnosticToggle);
             diagnosticToggle.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View view) {
-                    diagnosticText.setVisibility(diagnosticText.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE);
+                    boolean show = diagnosticText.getVisibility() != View.VISIBLE;
+                    beginContentTransition(card);
+                    diagnosticText.setVisibility(show ? View.VISIBLE : View.GONE);
+                    diagnosticToggle.setText(show ? "隱藏診斷" : "顯示診斷");
                 }
             });
             card.addView(diagnosticToggle, matchWrap());
@@ -435,6 +508,7 @@ public class SettingsActivity extends Activity {
         if (clipboardStatus == null) {
             return;
         }
+        String previous = clipboardStatus.getText().toString();
         String code = MainActivity.extractSixDigitCode(readClipboardText());
         if (code == null) {
             clipboardStatus.setText("剪貼簿：未偵測到 6 位數");
@@ -442,6 +516,9 @@ public class SettingsActivity extends Activity {
         } else {
             clipboardStatus.setText("剪貼簿：" + code);
             clipboardHint.setText("已準備好開啟 " + MainActivity.buildTargetUrl(UrlStore.getBaseUrl(this), code));
+        }
+        if (previous.length() > 0 && !previous.equals(clipboardStatus.getText().toString())) {
+            animateStatusChange();
         }
     }
 
@@ -488,8 +565,143 @@ public class SettingsActivity extends Activity {
         button.setTextColor(textColor);
         button.setMinHeight(dp(48));
         int borderColor = bgColor == Color.WHITE ? COLOR_BORDER : bgColor;
-        button.setBackground(roundedBg(bgColor, 12, borderColor, 1));
+        Drawable shape = roundedBg(bgColor, 12, borderColor, 1);
+        int rippleColor = bgColor == Color.WHITE
+                ? Color.argb(28, 25, 31, 42)
+                : Color.argb(48, 255, 255, 255);
+        button.setBackground(new RippleDrawable(ColorStateList.valueOf(rippleColor), shape, null));
+        attachPressMotion(button);
         return button;
+    }
+
+    private void registerEntrance(View view) {
+        entranceViews.add(view);
+        if (motionEnabled) {
+            view.setAlpha(0f);
+            view.setTranslationY(dp(12));
+        }
+    }
+
+    private void playScreenEntrance(final View root) {
+        if (!motionEnabled) {
+            return;
+        }
+        entranceRoot = root;
+        entranceRunnable = new Runnable() {
+            @Override
+            public void run() {
+                entranceRoot = null;
+                entranceRunnable = null;
+                for (int i = 0; i < entranceViews.size(); i++) {
+                    View view = entranceViews.get(i);
+                    view.animate()
+                            .alpha(1f)
+                            .translationY(0f)
+                            .setStartDelay(i * 34L)
+                            .setDuration(MOTION_NORMAL_MS)
+                            .setInterpolator(motionInterpolator)
+                            .start();
+                }
+            }
+        };
+        root.post(entranceRunnable);
+    }
+
+    private void attachPressMotion(final View view) {
+        if (!motionEnabled) {
+            return;
+        }
+        view.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View touched, MotionEvent event) {
+                int action = event.getActionMasked();
+                if (action == MotionEvent.ACTION_DOWN) {
+                    animateScale(touched, 0.975f);
+                } else if (action == MotionEvent.ACTION_UP
+                        || action == MotionEvent.ACTION_CANCEL
+                        || action == MotionEvent.ACTION_OUTSIDE) {
+                    animateScale(touched, 1f);
+                }
+                return false;
+            }
+        });
+    }
+
+    private void resetScaleAnimations(View view) {
+        if (view == null) {
+            return;
+        }
+        view.animate().cancel();
+        view.setScaleX(1f);
+        view.setScaleY(1f);
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                resetScaleAnimations(group.getChildAt(i));
+            }
+        }
+    }
+
+    private void animateScale(View view, float scale) {
+        view.animate().cancel();
+        view.animate()
+                .scaleX(scale)
+                .scaleY(scale)
+                .setDuration(MOTION_FAST_MS)
+                .setInterpolator(motionInterpolator)
+                .start();
+    }
+
+    private void animateStatusChange() {
+        if (!motionEnabled) {
+            return;
+        }
+        clipboardStatus.animate().cancel();
+        clipboardStatus.setAlpha(0.55f);
+        clipboardStatus.setScaleX(0.98f);
+        clipboardStatus.setScaleY(0.98f);
+        clipboardStatus.animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(180L)
+                .setInterpolator(motionInterpolator)
+                .start();
+    }
+
+    private void beginContentTransition(ViewGroup container) {
+        if (!motionEnabled || !container.isLaidOut()) {
+            return;
+        }
+        Transition transition = new AutoTransition();
+        transition.setDuration(220L);
+        transition.setInterpolator(motionInterpolator);
+        TransitionManager.beginDelayedTransition(container, transition);
+    }
+
+    private String historyFingerprint(List<HistoryEntry> entries) {
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < entries.size(); i++) {
+            HistoryEntry entry = entries.get(i);
+            builder.append(entry.code).append('\u0001')
+                    .append(entry.title).append('\u0001')
+                    .append(entry.url).append('\u0001')
+                    .append(entry.diagnostic).append('\u0001')
+                    .append(entry.timestamp).append('\u0002');
+        }
+        return builder.toString();
+    }
+
+    private boolean shouldUseMotion() {
+        PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        if (powerManager != null && powerManager.isPowerSaveMode()) {
+            return false;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            return ValueAnimator.areAnimatorsEnabled();
+        }
+        return Settings.Global.getFloat(getContentResolver(),
+                Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f;
     }
 
     private GradientDrawable roundedBg(int color, int radiusDp, int strokeColor, int strokeDp) {
