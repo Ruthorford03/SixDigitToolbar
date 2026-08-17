@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1
+
+- Modernize the main screen with grouped cards, clearer primary actions, and compact history entries.
+- Keep the clipboard-first workflow as the default path.
+- Move clear history to the history header and keep diagnostics collapsed.
+
 ## 2.0
 
 - Avoid title network fetches when a useful title is already cached.
