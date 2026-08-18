@@ -2,6 +2,8 @@ package tw.local.sixdigittoolbar;
 
 import android.accessibilityservice.AccessibilityService;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
@@ -18,28 +20,46 @@ public class WnacgAccessibilityService extends AccessibilityService {
     private String lastPendingText = "";
     private int attemptsForPendingText;
     private boolean searchRequested;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable delayedAttempt = new Runnable() {
+        @Override
+        public void run() {
+            attemptPendingPaste();
+        }
+    };
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         CharSequence packageName = event == null ? null : event.getPackageName();
-        if (packageName == null || !packageName.toString().toLowerCase().contains("wnacg")) {
+        if (!isWnacgPackage(packageName)) {
+            return;
+        }
+
+        attemptPendingPaste();
+    }
+
+    private void attemptPendingPaste() {
+        String pending = WnacgPasteStore.getPending(this);
+        if (!HistoryStore.isUsefulTitle(pending)) {
+            cancelScheduledAttempt();
+            resetAttempts();
+            return;
+        }
+
+        long startupRemaining = APP_STARTUP_GRACE_MS
+                - WnacgPasteStore.getPendingAgeMillis(this);
+        if (startupRemaining > 0) {
+            scheduleAttempt(startupRemaining);
             return;
         }
 
         long now = SystemClock.elapsedRealtime();
-        if (now - lastAttemptTime < MIN_ATTEMPT_INTERVAL_MS) {
+        long intervalRemaining = MIN_ATTEMPT_INTERVAL_MS - (now - lastAttemptTime);
+        if (intervalRemaining > 0) {
+            scheduleAttempt(intervalRemaining);
             return;
         }
         lastAttemptTime = now;
-
-        String pending = WnacgPasteStore.getPending(this);
-        if (!HistoryStore.isUsefulTitle(pending)) {
-            resetAttempts();
-            return;
-        }
-        if (WnacgPasteStore.getPendingAgeMillis(this) < APP_STARTUP_GRACE_MS) {
-            return;
-        }
 
         if (!pending.equals(lastPendingText)) {
             lastPendingText = pending;
@@ -49,23 +69,39 @@ public class WnacgAccessibilityService extends AccessibilityService {
         attemptsForPendingText++;
         if (attemptsForPendingText > MAX_ATTEMPTS_PER_TEXT) {
             WnacgPasteStore.clear(this);
+            cancelScheduledAttempt();
             resetAttempts();
             return;
         }
 
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) {
+            scheduleAttempt(MIN_ATTEMPT_INTERVAL_MS);
+            return;
+        }
+        if (!isWnacgPackage(root.getPackageName())) {
+            cancelScheduledAttempt();
             return;
         }
 
         if (pasteIntoSearch(root, pending)) {
             WnacgPasteStore.clear(this);
+            cancelScheduledAttempt();
             resetAttempts();
+        } else {
+            scheduleAttempt(MIN_ATTEMPT_INTERVAL_MS);
         }
     }
 
     @Override
     public void onInterrupt() {
+        cancelScheduledAttempt();
+    }
+
+    @Override
+    public void onDestroy() {
+        cancelScheduledAttempt();
+        super.onDestroy();
     }
 
     private boolean pasteIntoSearch(AccessibilityNodeInfo root, String text) {
@@ -153,6 +189,20 @@ public class WnacgAccessibilityService extends AccessibilityService {
 
     private String toText(CharSequence text) {
         return text == null ? "" : text.toString();
+    }
+
+    private boolean isWnacgPackage(CharSequence packageName) {
+        return packageName != null
+                && packageName.toString().toLowerCase().contains("wnacg");
+    }
+
+    private void scheduleAttempt(long delayMillis) {
+        handler.removeCallbacks(delayedAttempt);
+        handler.postDelayed(delayedAttempt, Math.max(100L, delayMillis));
+    }
+
+    private void cancelScheduledAttempt() {
+        handler.removeCallbacks(delayedAttempt);
     }
 
     private void resetAttempts() {

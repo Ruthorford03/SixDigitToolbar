@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.7
+
+- Schedule bounded paste retries after the wnacg startup grace period instead of relying on new accessibility events.
+- Retry after opening the search screen so the title is filled even when wnacg emits no follow-up event.
+- Stop scheduled work immediately after success, timeout, interruption, or leaving the wnacg window.
+
 ## 2.6
 
 - Delay the wnacg paste helper until the app startup cover has had time to finish.
