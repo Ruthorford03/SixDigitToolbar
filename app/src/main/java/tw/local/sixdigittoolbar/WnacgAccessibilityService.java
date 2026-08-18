@@ -2,14 +2,15 @@ package tw.local.sixdigittoolbar;
 
 import android.accessibilityservice.AccessibilityService;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 
 import java.util.ArrayList;
-import java.util.List;
 
 public class WnacgAccessibilityService extends AccessibilityService {
-    private static final int MAX_ATTEMPTS_PER_TEXT = 30;
+    private static final int MAX_ATTEMPTS_PER_TEXT = 15;
+    private static final int MAX_NODES_PER_SCAN = 500;
 
     private long lastAttemptTime;
     private String lastPendingText = "";
@@ -17,6 +18,11 @@ public class WnacgAccessibilityService extends AccessibilityService {
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
+        CharSequence packageName = event == null ? null : event.getPackageName();
+        if (packageName == null || !packageName.toString().toLowerCase().contains("wnacg")) {
+            return;
+        }
+
         String pending = WnacgPasteStore.getPending(this);
         if (!HistoryStore.isUsefulTitle(pending)) {
             resetAttempts();
@@ -26,14 +32,10 @@ public class WnacgAccessibilityService extends AccessibilityService {
         if (!pending.equals(lastPendingText)) {
             lastPendingText = pending;
             attemptsForPendingText = 0;
+            lastAttemptTime = 0;
         }
 
-        CharSequence packageName = event == null ? null : event.getPackageName();
-        if (packageName != null && !packageName.toString().toLowerCase().contains("wnacg")) {
-            return;
-        }
-
-        long now = System.currentTimeMillis();
+        long now = SystemClock.elapsedRealtime();
         if (now - lastAttemptTime < 1000) {
             return;
         }
@@ -81,47 +83,52 @@ public class WnacgAccessibilityService extends AccessibilityService {
     }
 
     private AccessibilityNodeInfo findBestEditable(AccessibilityNodeInfo root) {
-        ArrayList<AccessibilityNodeInfo> candidates = new ArrayList<AccessibilityNodeInfo>();
-        collectEditable(root, candidates);
-        if (candidates.size() == 0) {
-            return null;
-        }
+        ArrayList<AccessibilityNodeInfo> queue = new ArrayList<AccessibilityNodeInfo>();
+        queue.add(root);
+        AccessibilityNodeInfo fallback = null;
 
-        AccessibilityNodeInfo best = candidates.get(0);
-        for (int i = 0; i < candidates.size(); i++) {
-            AccessibilityNodeInfo candidate = candidates.get(i);
-            if (looksSearchRelated(candidate)) {
-                return candidate;
+        for (int i = 0; i < queue.size() && i < MAX_NODES_PER_SCAN; i++) {
+            AccessibilityNodeInfo node = queue.get(i);
+            CharSequence className = node.getClassName();
+            boolean editText = className != null
+                    && className.toString().toLowerCase().contains("edittext");
+            if (node.isEditable() || editText) {
+                if (looksSearchRelated(node)) {
+                    return node;
+                }
+                if (fallback == null) {
+                    fallback = node;
+                }
+            }
+            for (int childIndex = 0; childIndex < node.getChildCount()
+                    && queue.size() < MAX_NODES_PER_SCAN; childIndex++) {
+                AccessibilityNodeInfo child = node.getChild(childIndex);
+                if (child != null) {
+                    queue.add(child);
+                }
             }
         }
-        return best;
-    }
-
-    private void collectEditable(AccessibilityNodeInfo node, List<AccessibilityNodeInfo> out) {
-        if (node == null) {
-            return;
-        }
-        CharSequence className = node.getClassName();
-        boolean editText = className != null && className.toString().toLowerCase().contains("edittext");
-        if (node.isEditable() || editText) {
-            out.add(node);
-        }
-        for (int i = 0; i < node.getChildCount(); i++) {
-            collectEditable(node.getChild(i), out);
-        }
+        return fallback;
     }
 
     private AccessibilityNodeInfo findSearchLikeNode(AccessibilityNodeInfo node) {
         if (node == null) {
             return null;
         }
-        if (looksSearchRelated(node) && node.isClickable()) {
-            return node;
-        }
-        for (int i = 0; i < node.getChildCount(); i++) {
-            AccessibilityNodeInfo found = findSearchLikeNode(node.getChild(i));
-            if (found != null) {
-                return found;
+
+        ArrayList<AccessibilityNodeInfo> queue = new ArrayList<AccessibilityNodeInfo>();
+        queue.add(node);
+        for (int i = 0; i < queue.size() && i < MAX_NODES_PER_SCAN; i++) {
+            AccessibilityNodeInfo candidate = queue.get(i);
+            if (looksSearchRelated(candidate) && candidate.isClickable()) {
+                return candidate;
+            }
+            for (int childIndex = 0; childIndex < candidate.getChildCount()
+                    && queue.size() < MAX_NODES_PER_SCAN; childIndex++) {
+                AccessibilityNodeInfo child = candidate.getChild(childIndex);
+                if (child != null) {
+                    queue.add(child);
+                }
             }
         }
         return null;
@@ -145,5 +152,6 @@ public class WnacgAccessibilityService extends AccessibilityService {
     private void resetAttempts() {
         lastPendingText = "";
         attemptsForPendingText = 0;
+        lastAttemptTime = 0;
     }
 }

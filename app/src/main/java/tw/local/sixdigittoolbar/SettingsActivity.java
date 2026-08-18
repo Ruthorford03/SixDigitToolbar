@@ -7,6 +7,7 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.graphics.Insets;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
@@ -23,6 +24,9 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
+import android.view.WindowInsets;
+import android.view.WindowManager;
 import android.view.animation.Interpolator;
 import android.view.animation.PathInterpolator;
 import android.widget.Button;
@@ -66,6 +70,7 @@ public class SettingsActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         motionEnabled = shouldUseMotion();
+        configureWindowForAndroid16();
 
         ScrollView scrollView = new ScrollView(this);
         scrollView.setBackgroundColor(COLOR_BG);
@@ -74,8 +79,8 @@ public class SettingsActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.TOP);
-        root.setPadding(dp(16), dp(18), dp(16), dp(20));
         rootContainer = root;
+        applySystemInsets(root);
         scrollView.addView(root, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -86,6 +91,7 @@ public class SettingsActivity extends Activity {
         addHistory(root);
 
         setContentView(scrollView);
+        root.requestApplyInsets();
         playScreenEntrance(root);
     }
 
@@ -391,7 +397,8 @@ public class SettingsActivity extends Activity {
         card.addView(time, matchWrap());
 
         LinearLayout actions = new LinearLayout(this);
-        actions.setOrientation(LinearLayout.HORIZONTAL);
+        boolean stackActions = shouldStackHistoryActions();
+        actions.setOrientation(stackActions ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
 
         Button open = makeButton("前往", Color.WHITE, COLOR_TEXT);
         open.setOnClickListener(new View.OnClickListener() {
@@ -403,7 +410,7 @@ public class SettingsActivity extends Activity {
                 MainActivity.openBrowser(SettingsActivity.this, url);
             }
         });
-        actions.addView(open, weightedButtonParams(0));
+        actions.addView(open, historyActionParams(stackActions, 0));
 
         Button wnacg = makeButton("搜尋wnacg", Color.WHITE, COLOR_TEXT);
         wnacg.setOnClickListener(new View.OnClickListener() {
@@ -412,7 +419,7 @@ public class SettingsActivity extends Activity {
                 WnacgLauncher.search(SettingsActivity.this, entry.title);
             }
         });
-        actions.addView(wnacg, weightedButtonParams(dp(8)));
+        actions.addView(wnacg, historyActionParams(stackActions, dp(8)));
 
         Button paste = makeButton("貼上標題", Color.WHITE, COLOR_TEXT);
         paste.setOnClickListener(new View.OnClickListener() {
@@ -421,7 +428,7 @@ public class SettingsActivity extends Activity {
                 updateTitleFromClipboard(entry.code);
             }
         });
-        actions.addView(paste, weightedButtonParams(dp(8)));
+        actions.addView(paste, historyActionParams(stackActions, dp(8)));
 
         LinearLayout.LayoutParams actionsParams = matchWrap();
         actionsParams.topMargin = dp(12);
@@ -704,6 +711,65 @@ public class SettingsActivity extends Activity {
                 Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f;
     }
 
+    private void configureWindowForAndroid16() {
+        Window window = getWindow();
+        window.setStatusBarColor(Color.TRANSPARENT);
+        window.setNavigationBarColor(Color.TRANSPARENT);
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.setDecorFitsSystemWindows(false);
+        } else {
+            View decor = window.getDecorView();
+            decor.setSystemUiVisibility(decor.getSystemUiVisibility()
+                    | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.setStatusBarContrastEnforced(false);
+            window.setNavigationBarContrastEnforced(false);
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+            window.setFrameRatePowerSavingsBalanced(true);
+            window.setFrameRateBoostOnTouchEnabled(true);
+        }
+    }
+
+    private void applySystemInsets(final View root) {
+        root.setPadding(dp(16), dp(18), dp(16), dp(20));
+        root.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+            @Override
+            public WindowInsets onApplyWindowInsets(View view, WindowInsets insets) {
+                int left;
+                int top;
+                int right;
+                int bottom;
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    Insets bars = insets.getInsets(WindowInsets.Type.systemBars()
+                            | WindowInsets.Type.displayCutout());
+                    Insets ime = insets.getInsets(WindowInsets.Type.ime());
+                    left = Math.max(bars.left, ime.left);
+                    top = Math.max(bars.top, ime.top);
+                    right = Math.max(bars.right, ime.right);
+                    bottom = Math.max(bars.bottom, ime.bottom);
+                } else {
+                    left = insets.getSystemWindowInsetLeft();
+                    top = insets.getSystemWindowInsetTop();
+                    right = insets.getSystemWindowInsetRight();
+                    bottom = insets.getSystemWindowInsetBottom();
+                }
+
+                view.setPadding(dp(16) + left, dp(18) + top,
+                        dp(16) + right, dp(20) + bottom);
+                return insets;
+            }
+        });
+    }
+
     private GradientDrawable roundedBg(int color, int radiusDp, int strokeColor, int strokeDp) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(color);
@@ -732,6 +798,20 @@ public class SettingsActivity extends Activity {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1);
         params.leftMargin = leftMargin;
+        return params;
+    }
+
+    private boolean shouldStackHistoryActions() {
+        return getResources().getConfiguration().fontScale > 1.15f
+                || getResources().getConfiguration().screenWidthDp < 390;
+    }
+
+    private LinearLayout.LayoutParams historyActionParams(boolean stacked, int spacing) {
+        if (!stacked) {
+            return weightedButtonParams(spacing);
+        }
+        LinearLayout.LayoutParams params = matchWrap();
+        params.topMargin = spacing;
         return params;
     }
 

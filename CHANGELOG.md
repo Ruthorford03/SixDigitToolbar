@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.3
+
+- Optimize edge-to-edge insets for Android 16 gesture navigation and display cutouts.
+- Enable predictive back and transparent system bars.
+- Enable balanced adaptive refresh rate behavior on Android 15 and newer.
+- Bound wnacg accessibility scans and ignore unrelated app events earlier.
+- Keep the interface stable under OriginOS force-dark and large system font settings.
+
 ## 2.2
 
 - Added restrained Apple-style entrance, press, expand, and content-update motion.
