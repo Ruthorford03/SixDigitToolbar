@@ -40,6 +40,13 @@ final class WnacgPasteStore {
         return cachedText;
     }
 
+    static synchronized long getPendingAgeMillis(Context context) {
+        if (getPending(context).length() == 0) {
+            return Long.MAX_VALUE;
+        }
+        return Math.max(0L, System.currentTimeMillis() - cachedTime);
+    }
+
     static synchronized void clear(Context context) {
         cachedText = "";
         cachedTime = 0;

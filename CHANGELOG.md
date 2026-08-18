@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.6
+
+- Delay the wnacg paste helper until the app startup cover has had time to finish.
+- Require a search-labelled control before allowing fallback editable fields.
+- Wait for the next accessibility event after opening search instead of acting on a stale screen tree.
+
 ## 2.5
 
 - Replace full-layout transitions with short alpha feedback to prevent blank expansion frames.

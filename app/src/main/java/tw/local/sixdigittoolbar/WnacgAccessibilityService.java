@@ -12,10 +12,12 @@ public class WnacgAccessibilityService extends AccessibilityService {
     private static final int MAX_ATTEMPTS_PER_TEXT = 8;
     private static final int MAX_NODES_PER_SCAN = 300;
     private static final long MIN_ATTEMPT_INTERVAL_MS = 1500;
+    private static final long APP_STARTUP_GRACE_MS = 2500;
 
     private long lastAttemptTime;
     private String lastPendingText = "";
     private int attemptsForPendingText;
+    private boolean searchRequested;
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
@@ -35,10 +37,14 @@ public class WnacgAccessibilityService extends AccessibilityService {
             resetAttempts();
             return;
         }
+        if (WnacgPasteStore.getPendingAgeMillis(this) < APP_STARTUP_GRACE_MS) {
+            return;
+        }
 
         if (!pending.equals(lastPendingText)) {
             lastPendingText = pending;
             attemptsForPendingText = 0;
+            searchRequested = false;
         }
         attemptsForPendingText++;
         if (attemptsForPendingText > MAX_ATTEMPTS_PER_TEXT) {
@@ -63,13 +69,13 @@ public class WnacgAccessibilityService extends AccessibilityService {
     }
 
     private boolean pasteIntoSearch(AccessibilityNodeInfo root, String text) {
-        AccessibilityNodeInfo editable = findBestEditable(root);
-        if (editable == null) {
+        AccessibilityNodeInfo editable = findBestEditable(root, searchRequested);
+        if (editable == null && !searchRequested) {
             AccessibilityNodeInfo search = findSearchLikeNode(root);
-            if (search != null) {
-                search.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                editable = findBestEditable(getRootInActiveWindow());
+            if (search != null && search.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                searchRequested = true;
             }
+            return false;
         }
 
         if (editable == null) {
@@ -82,7 +88,7 @@ public class WnacgAccessibilityService extends AccessibilityService {
         return editable.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);
     }
 
-    private AccessibilityNodeInfo findBestEditable(AccessibilityNodeInfo root) {
+    private AccessibilityNodeInfo findBestEditable(AccessibilityNodeInfo root, boolean allowFallback) {
         ArrayList<AccessibilityNodeInfo> queue = new ArrayList<AccessibilityNodeInfo>();
         queue.add(root);
         AccessibilityNodeInfo fallback = null;
@@ -96,7 +102,7 @@ public class WnacgAccessibilityService extends AccessibilityService {
                 if (looksSearchRelated(node)) {
                     return node;
                 }
-                if (fallback == null) {
+                if (allowFallback && fallback == null) {
                     fallback = node;
                 }
             }
@@ -152,5 +158,6 @@ public class WnacgAccessibilityService extends AccessibilityService {
     private void resetAttempts() {
         lastPendingText = "";
         attemptsForPendingText = 0;
+        searchRequested = false;
     }
 }
