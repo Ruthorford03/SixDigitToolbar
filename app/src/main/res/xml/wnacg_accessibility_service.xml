@@ -6,4 +6,4 @@
     android:canRetrieveWindowContent="true"
     android:canPerformGestures="false"
     android:description="@string/accessibility_service_label"
-    android:notificationTimeout="300" />
+    android:notificationTimeout="500" />

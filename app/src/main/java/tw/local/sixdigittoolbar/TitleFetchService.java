@@ -17,6 +17,9 @@ import java.util.regex.Pattern;
 public class TitleFetchService extends IntentService {
     private static final String EXTRA_CODE = "code";
     private static final String EXTRA_URL = "url";
+    private static final String NETWORK_PREFS = "title_fetch_network";
+    private static final String KEY_BACKOFF_UNTIL = "backoff_until";
+    private static final long BLOCKED_BACKOFF_MS = 1800000L;
     private static final Pattern TITLE = Pattern.compile("<title[^>]*>(.*?)</title>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern JAPANESE_TITLE = Pattern.compile("<h2[^>]*class=[\"'][^\"']*title[^\"']*[\"'][^>]*>(.*?)</h2>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
@@ -26,6 +29,11 @@ public class TitleFetchService extends IntentService {
 
     static void fetch(Context context, String code, String url) {
         if (!HistoryStore.prepareTitleFetch(context, code, url)) {
+            return;
+        }
+        if (isNetworkBackedOff(context)) {
+            HistoryStore.upsert(context, code, "標題讀取失敗", url,
+                    "自動讀取暫停中，避免重複連線耗電；可用剪貼簿更新標題");
             return;
         }
 
@@ -42,7 +50,7 @@ public class TitleFetchService extends IntentService {
                 @Override
                 public void run() {
                     FetchResult result = fetchTitle(stableCode, stableUrl);
-                    HistoryStore.upsert(appContext, stableCode, result.title, stableUrl, result.diagnostic);
+                    persistResult(appContext, stableCode, stableUrl, result);
                 }
             }).start();
         }
@@ -57,7 +65,7 @@ public class TitleFetchService extends IntentService {
         String code = intent.getStringExtra(EXTRA_CODE);
         String url = intent.getStringExtra(EXTRA_URL);
         FetchResult result = fetchTitle(code, url);
-        HistoryStore.upsert(this, code, result.title, url, result.diagnostic);
+        persistResult(this, code, url, result);
     }
 
     private static FetchResult fetchTitle(String code, String urlText) {
@@ -69,12 +77,17 @@ public class TitleFetchService extends IntentService {
         if (isUsefulTitle(apiV1.title)) {
             return apiV1;
         }
+        if (apiV2.blocked && apiV1.blocked) {
+            return new FetchResult("標題讀取失敗",
+                    joinDiagnostics(apiV2.diagnostic, apiV1.diagnostic), true);
+        }
         FetchResult html = fetchTitleFromHtml(urlText);
         if (isUsefulTitle(html.title)) {
             return html;
         }
         return new FetchResult("標題讀取失敗",
-                joinDiagnostics(joinDiagnostics(apiV2.diagnostic, apiV1.diagnostic), html.diagnostic));
+                joinDiagnostics(joinDiagnostics(apiV2.diagnostic, apiV1.diagnostic), html.diagnostic),
+                html.blocked && (apiV2.blocked || apiV1.blocked));
     }
 
     private static FetchResult fetchJapaneseTitleFromApi(String code, boolean v2) {
@@ -92,7 +105,8 @@ public class TitleFetchService extends IntentService {
             int status = connection.getResponseCode();
             String json = readResponse(connection, 30000);
             if (status < 200 || status >= 300) {
-                return new FetchResult("", label + " HTTP " + status + " " + summarize(json));
+                return new FetchResult("", label + " HTTP " + status + " " + summarize(json),
+                        isBlockedStatus(status));
             }
             JSONObject root = new JSONObject(json);
             JSONObject title = findTitleObject(root);
@@ -153,7 +167,8 @@ public class TitleFetchService extends IntentService {
             int status = connection.getResponseCode();
             String html = readResponse(connection, 60000);
             if (status < 200 || status >= 300) {
-                return new FetchResult("", "html HTTP " + status + " " + summarize(html));
+                return new FetchResult("", "html HTTP " + status + " " + summarize(html),
+                        isBlockedStatus(status));
             }
             String title = parseTitle(html);
             if (isUsefulTitle(title)) {
@@ -171,8 +186,8 @@ public class TitleFetchService extends IntentService {
 
     private static HttpURLConnection openConnection(URL url) throws Exception {
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-        connection.setConnectTimeout(6000);
-        connection.setReadTimeout(8000);
+        connection.setConnectTimeout(4500);
+        connection.setReadTimeout(6000);
         connection.setUseCaches(false);
         connection.setRequestProperty("User-Agent", "Mozilla/5.0");
         connection.setRequestProperty("Accept", "application/json,text/html,*/*");
@@ -272,13 +287,44 @@ public class TitleFetchService extends IntentService {
         return first + " | " + second;
     }
 
+    private static boolean isBlockedStatus(int status) {
+        return status == 403 || status == 429;
+    }
+
+    private static boolean isNetworkBackedOff(Context context) {
+        long until = context.getSharedPreferences(NETWORK_PREFS, Context.MODE_PRIVATE)
+                .getLong(KEY_BACKOFF_UNTIL, 0L);
+        return System.currentTimeMillis() < until;
+    }
+
+    private static void persistResult(Context context, String code, String url, FetchResult result) {
+        if (result.blocked) {
+            context.getSharedPreferences(NETWORK_PREFS, Context.MODE_PRIVATE)
+                    .edit()
+                    .putLong(KEY_BACKOFF_UNTIL, System.currentTimeMillis() + BLOCKED_BACKOFF_MS)
+                    .apply();
+        } else if (isUsefulTitle(result.title)) {
+            context.getSharedPreferences(NETWORK_PREFS, Context.MODE_PRIVATE)
+                    .edit()
+                    .remove(KEY_BACKOFF_UNTIL)
+                    .apply();
+        }
+        HistoryStore.upsert(context, code, result.title, url, result.diagnostic);
+    }
+
     private static final class FetchResult {
         final String title;
         final String diagnostic;
+        final boolean blocked;
 
         FetchResult(String title, String diagnostic) {
+            this(title, diagnostic, false);
+        }
+
+        FetchResult(String title, String diagnostic, boolean blocked) {
             this.title = title == null ? "" : title;
             this.diagnostic = diagnostic == null ? "" : diagnostic;
+            this.blocked = blocked;
         }
     }
 }

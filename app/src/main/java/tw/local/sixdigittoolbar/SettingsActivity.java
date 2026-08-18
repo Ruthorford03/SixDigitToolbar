@@ -20,9 +20,6 @@ import android.os.Bundle;
 import android.os.PowerManager;
 import android.provider.Settings;
 import android.text.InputType;
-import android.transition.AutoTransition;
-import android.transition.Transition;
-import android.transition.TransitionManager;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -42,7 +39,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -50,8 +46,8 @@ import java.util.Locale;
 public class SettingsActivity extends Activity {
     private static final String APPEARANCE_PREFS = "appearance";
     private static final String KEY_DARK_MODE = "dark_mode";
-    private static final long MOTION_FAST_MS = 100;
-    private static final long MOTION_NORMAL_MS = 260;
+    private static final long MOTION_FAST_MS = 80;
+    private static final long MOTION_NORMAL_MS = 160;
 
     private int COLOR_BG;
     private int COLOR_CARD;
@@ -70,12 +66,12 @@ public class SettingsActivity extends Activity {
     private TextView clipboardStatus;
     private TextView clipboardHint;
     private String lastHistoryFingerprint;
-    private final List<View> entranceViews = new ArrayList<View>();
     private final Interpolator motionInterpolator = new PathInterpolator(0.2f, 0f, 0f, 1f);
+    private final SimpleDateFormat timeFormatter = new SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault());
     private boolean motionEnabled;
-    private ViewGroup rootContainer;
     private View entranceRoot;
     private Runnable entranceRunnable;
+    private View activePressView;
     private boolean darkMode;
 
     @Override
@@ -93,7 +89,6 @@ public class SettingsActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.TOP);
-        rootContainer = root;
         applySystemInsets(root);
         scrollView.addView(root, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -118,12 +113,11 @@ public class SettingsActivity extends Activity {
         }
         entranceRoot = null;
         entranceRunnable = null;
-        resetScaleAnimations(rootContainer);
-        for (int i = 0; i < entranceViews.size(); i++) {
-            View view = entranceViews.get(i);
-            view.animate().cancel();
-            view.setAlpha(1f);
-            view.setTranslationY(0f);
+        if (activePressView != null) {
+            activePressView.animate().cancel();
+            activePressView.setScaleX(1f);
+            activePressView.setScaleY(1f);
+            activePressView = null;
         }
         if (clipboardStatus != null) {
             clipboardStatus.animate().cancel();
@@ -206,7 +200,6 @@ public class SettingsActivity extends Activity {
         card.addView(clipboardHint, matchWrap());
 
         root.addView(card, cardParams(0));
-        registerEntrance(card);
     }
 
     private void addPrimaryActions(LinearLayout root) {
@@ -258,7 +251,6 @@ public class SettingsActivity extends Activity {
         card.addView(row, rowParams);
 
         root.addView(card, cardParams(dp(12)));
-        registerEntrance(card);
     }
 
     private void addUrlSettings(LinearLayout root) {
@@ -320,8 +312,7 @@ public class SettingsActivity extends Activity {
             @Override
             public void onClick(View view) {
                 boolean show = panel.getVisibility() != View.VISIBLE;
-                beginContentTransition(card);
-                panel.setVisibility(show ? View.VISIBLE : View.GONE);
+                setPanelVisible(panel, show);
                 toggle.setText(show ? "設定網址    收合" : "設定網址    展開");
             }
         });
@@ -329,7 +320,6 @@ public class SettingsActivity extends Activity {
         toggle.setText("設定網址    展開");
 
         root.addView(card, cardParams(dp(12)));
-        registerEntrance(card);
     }
 
     private void addHistory(LinearLayout root) {
@@ -360,14 +350,12 @@ public class SettingsActivity extends Activity {
         LinearLayout.LayoutParams headerParams = matchWrap();
         headerParams.topMargin = dp(20);
         root.addView(header, headerParams);
-        registerEntrance(header);
 
         historyContainer = new LinearLayout(this);
         historyContainer.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams containerParams = matchWrap();
         containerParams.topMargin = dp(8);
         root.addView(historyContainer, containerParams);
-        registerEntrance(historyContainer);
     }
 
     private void renderHistory() {
@@ -381,9 +369,6 @@ public class SettingsActivity extends Activity {
             return;
         }
 
-        if (lastHistoryFingerprint != null) {
-            beginContentTransition(historyContainer);
-        }
         lastHistoryFingerprint = fingerprint;
         historyContainer.removeAllViews();
         if (entries.size() == 0) {
@@ -446,10 +431,10 @@ public class SettingsActivity extends Activity {
         card.addView(time, matchWrap());
 
         LinearLayout actions = new LinearLayout(this);
-        boolean stackActions = shouldStackHistoryActions();
-        actions.setOrientation(stackActions ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
 
         Button open = makeButton("前往", COLOR_BUTTON, COLOR_TEXT);
+        styleCompactAction(open);
         open.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -459,25 +444,27 @@ public class SettingsActivity extends Activity {
                 MainActivity.openBrowser(SettingsActivity.this, url);
             }
         });
-        actions.addView(open, historyActionParams(stackActions, 0));
+        actions.addView(open, weightedButtonParams(0));
 
-        Button wnacg = makeButton("搜尋wnacg", COLOR_BUTTON, COLOR_TEXT);
+        Button wnacg = makeButton("wnacg", COLOR_BUTTON, COLOR_TEXT);
+        styleCompactAction(wnacg);
         wnacg.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 WnacgLauncher.search(SettingsActivity.this, entry.title);
             }
         });
-        actions.addView(wnacg, historyActionParams(stackActions, dp(8)));
+        actions.addView(wnacg, weightedButtonParams(dp(8)));
 
-        Button paste = makeButton("貼上標題", COLOR_BUTTON, COLOR_TEXT);
+        Button paste = makeButton("貼標題", COLOR_BUTTON, COLOR_TEXT);
+        styleCompactAction(paste);
         paste.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 updateTitleFromClipboard(entry.code);
             }
         });
-        actions.addView(paste, historyActionParams(stackActions, dp(8)));
+        actions.addView(paste, weightedButtonParams(dp(8)));
 
         LinearLayout.LayoutParams actionsParams = matchWrap();
         actionsParams.topMargin = dp(12);
@@ -502,8 +489,7 @@ public class SettingsActivity extends Activity {
                 @Override
                 public void onClick(View view) {
                     boolean show = diagnosticText.getVisibility() != View.VISIBLE;
-                    beginContentTransition(card);
-                    diagnosticText.setVisibility(show ? View.VISIBLE : View.GONE);
+                    setPanelVisible(diagnosticText, show);
                     diagnosticToggle.setText(show ? "隱藏診斷" : "顯示診斷");
                 }
             });
@@ -542,7 +528,7 @@ public class SettingsActivity extends Activity {
         if (timestamp <= 0) {
             return "";
         }
-        return new SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(new Date(timestamp));
+        return timeFormatter.format(new Date(timestamp));
     }
 
     private String readClipboardText() {
@@ -608,7 +594,7 @@ public class SettingsActivity extends Activity {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(16), dp(15), dp(16), dp(15));
-        card.setBackground(roundedBg(COLOR_CARD, 14, COLOR_BORDER, 1));
+        card.setBackground(roundedBg(COLOR_CARD, 8, COLOR_BORDER, 1));
         card.setElevation(0f);
         card.setStateListAnimator(null);
         return card;
@@ -625,7 +611,7 @@ public class SettingsActivity extends Activity {
         button.setTranslationZ(0f);
         button.setStateListAnimator(null);
         int borderColor = bgColor == COLOR_BUTTON ? COLOR_BORDER : bgColor;
-        Drawable shape = roundedBg(bgColor, 12, borderColor, 1);
+        Drawable shape = roundedBg(bgColor, 8, borderColor, 1);
         int rippleColor = bgColor == COLOR_BUTTON
                 ? (darkMode ? Color.argb(42, 255, 255, 255) : Color.argb(28, 25, 31, 42))
                 : Color.argb(48, 255, 255, 255);
@@ -634,34 +620,24 @@ public class SettingsActivity extends Activity {
         return button;
     }
 
-    private void registerEntrance(View view) {
-        entranceViews.add(view);
-        if (motionEnabled) {
-            view.setAlpha(0f);
-            view.setTranslationY(dp(12));
-        }
-    }
-
     private void playScreenEntrance(final View root) {
         if (!motionEnabled) {
             return;
         }
+        root.setAlpha(0f);
+        root.setTranslationY(dp(4));
         entranceRoot = root;
         entranceRunnable = new Runnable() {
             @Override
             public void run() {
                 entranceRoot = null;
                 entranceRunnable = null;
-                for (int i = 0; i < entranceViews.size(); i++) {
-                    View view = entranceViews.get(i);
-                    view.animate()
-                            .alpha(1f)
-                            .translationY(0f)
-                            .setStartDelay(i * 34L)
-                            .setDuration(MOTION_NORMAL_MS)
-                            .setInterpolator(motionInterpolator)
-                            .start();
-                }
+                root.animate()
+                        .alpha(1f)
+                        .translationY(0f)
+                        .setDuration(MOTION_NORMAL_MS)
+                        .setInterpolator(motionInterpolator)
+                        .start();
             }
         };
         root.post(entranceRunnable);
@@ -676,30 +652,28 @@ public class SettingsActivity extends Activity {
             public boolean onTouch(View touched, MotionEvent event) {
                 int action = event.getActionMasked();
                 if (action == MotionEvent.ACTION_DOWN) {
-                    animateScale(touched, 0.975f);
+                    if (activePressView != null && activePressView != touched) {
+                        resetScale(activePressView);
+                    }
+                    activePressView = touched;
+                    animateScale(touched, 0.985f);
                 } else if (action == MotionEvent.ACTION_UP
                         || action == MotionEvent.ACTION_CANCEL
                         || action == MotionEvent.ACTION_OUTSIDE) {
                     animateScale(touched, 1f);
+                    if (activePressView == touched) {
+                        activePressView = null;
+                    }
                 }
                 return false;
             }
         });
     }
 
-    private void resetScaleAnimations(View view) {
-        if (view == null) {
-            return;
-        }
+    private void resetScale(View view) {
         view.animate().cancel();
         view.setScaleX(1f);
         view.setScaleY(1f);
-        if (view instanceof ViewGroup) {
-            ViewGroup group = (ViewGroup) view;
-            for (int i = 0; i < group.getChildCount(); i++) {
-                resetScaleAnimations(group.getChildAt(i));
-            }
-        }
     }
 
     private void animateScale(View view, float scale) {
@@ -724,19 +698,49 @@ public class SettingsActivity extends Activity {
                 .alpha(1f)
                 .scaleX(1f)
                 .scaleY(1f)
-                .setDuration(180L)
+                .setDuration(140L)
                 .setInterpolator(motionInterpolator)
                 .start();
     }
 
-    private void beginContentTransition(ViewGroup container) {
-        if (!motionEnabled || !container.isLaidOut()) {
+    private void setPanelVisible(final View panel, boolean visible) {
+        panel.animate().cancel();
+        View parent = panel.getParent() instanceof View ? (View) panel.getParent() : null;
+        if (!motionEnabled || parent == null || !parent.isLaidOut()) {
+            panel.setAlpha(1f);
+            panel.setVisibility(visible ? View.VISIBLE : View.GONE);
             return;
         }
-        Transition transition = new AutoTransition();
-        transition.setDuration(220L);
-        transition.setInterpolator(motionInterpolator);
-        TransitionManager.beginDelayedTransition(container, transition);
+        if (visible) {
+            panel.setAlpha(0f);
+            panel.setVisibility(View.VISIBLE);
+            panel.animate()
+                    .alpha(1f)
+                    .setDuration(140L)
+                    .setInterpolator(motionInterpolator)
+                    .start();
+            return;
+        }
+        panel.animate()
+                .alpha(0f)
+                .setDuration(MOTION_FAST_MS)
+                .setInterpolator(motionInterpolator)
+                .withEndAction(new Runnable() {
+                    @Override
+                    public void run() {
+                        panel.setVisibility(View.GONE);
+                        panel.setAlpha(1f);
+                    }
+                })
+                .start();
+    }
+
+    private void styleCompactAction(Button button) {
+        button.setTextSize(13);
+        button.setMinHeight(dp(44));
+        button.setMinWidth(0);
+        button.setPadding(dp(4), 0, dp(4), 0);
+        button.setSingleLine(true);
     }
 
     private String historyFingerprint(List<HistoryEntry> entries) {
@@ -943,20 +947,6 @@ public class SettingsActivity extends Activity {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1);
         params.leftMargin = leftMargin;
-        return params;
-    }
-
-    private boolean shouldStackHistoryActions() {
-        return getResources().getConfiguration().fontScale > 1.15f
-                || getResources().getConfiguration().screenWidthDp < 390;
-    }
-
-    private LinearLayout.LayoutParams historyActionParams(boolean stacked, int spacing) {
-        if (!stacked) {
-            return weightedButtonParams(spacing);
-        }
-        LinearLayout.LayoutParams params = matchWrap();
-        params.topMargin = spacing;
         return params;
     }
 

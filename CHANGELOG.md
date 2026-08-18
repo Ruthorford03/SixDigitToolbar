@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.5
+
+- Replace full-layout transitions with short alpha feedback to prevent blank expansion frames.
+- Animate the screen as one layer and stop traversing the full view tree when the app leaves the foreground.
+- Keep history data cached in-process and reuse the date formatter to reduce repeated main-thread work.
+- Fit all history actions on one compact row with stable 44 dp touch targets.
+- Back off automatic title fetching for 30 minutes after repeated HTTP 403 or 429 responses.
+- Cache pending wnacg paste text and lower accessibility scan frequency and limits.
+
 ## 2.4
 
 - Remove card and button elevation shadows; retain clean one-pixel borders and ripple feedback.

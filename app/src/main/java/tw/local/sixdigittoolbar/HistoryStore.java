@@ -15,6 +15,7 @@ final class HistoryStore {
     private static final int MAX_ITEMS = 50;
     private static final long FETCH_IN_PROGRESS_COOLDOWN_MS = 120000;
     private static final long FAILED_FETCH_COOLDOWN_MS = 1800000;
+    private static ArrayList<HistoryEntry> cachedEntries;
 
     private HistoryStore() {
     }
@@ -118,6 +119,10 @@ final class HistoryStore {
     }
 
     static synchronized List<HistoryEntry> list(Context context) {
+        if (cachedEntries != null) {
+            return new ArrayList<HistoryEntry>(cachedEntries);
+        }
+
         ArrayList<HistoryEntry> entries = new ArrayList<HistoryEntry>();
         SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         String raw = prefs.getString(KEY_ITEMS, "[]");
@@ -134,10 +139,12 @@ final class HistoryStore {
             }
         } catch (Exception ignored) {
         }
-        return entries;
+        cachedEntries = entries;
+        return new ArrayList<HistoryEntry>(entries);
     }
 
     static synchronized void clear(Context context) {
+        cachedEntries = new ArrayList<HistoryEntry>();
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit()
                 .remove(KEY_ITEMS)
@@ -145,6 +152,7 @@ final class HistoryStore {
     }
 
     private static void save(Context context, List<HistoryEntry> entries) {
+        cachedEntries = new ArrayList<HistoryEntry>(entries);
         JSONArray array = new JSONArray();
         for (int i = 0; i < entries.size(); i++) {
             HistoryEntry entry = entries.get(i);

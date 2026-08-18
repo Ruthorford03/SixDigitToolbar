@@ -9,8 +9,9 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import java.util.ArrayList;
 
 public class WnacgAccessibilityService extends AccessibilityService {
-    private static final int MAX_ATTEMPTS_PER_TEXT = 15;
-    private static final int MAX_NODES_PER_SCAN = 500;
+    private static final int MAX_ATTEMPTS_PER_TEXT = 8;
+    private static final int MAX_NODES_PER_SCAN = 300;
+    private static final long MIN_ATTEMPT_INTERVAL_MS = 1500;
 
     private long lastAttemptTime;
     private String lastPendingText = "";
@@ -23,6 +24,12 @@ public class WnacgAccessibilityService extends AccessibilityService {
             return;
         }
 
+        long now = SystemClock.elapsedRealtime();
+        if (now - lastAttemptTime < MIN_ATTEMPT_INTERVAL_MS) {
+            return;
+        }
+        lastAttemptTime = now;
+
         String pending = WnacgPasteStore.getPending(this);
         if (!HistoryStore.isUsefulTitle(pending)) {
             resetAttempts();
@@ -32,14 +39,7 @@ public class WnacgAccessibilityService extends AccessibilityService {
         if (!pending.equals(lastPendingText)) {
             lastPendingText = pending;
             attemptsForPendingText = 0;
-            lastAttemptTime = 0;
         }
-
-        long now = SystemClock.elapsedRealtime();
-        if (now - lastAttemptTime < 1000) {
-            return;
-        }
-        lastAttemptTime = now;
         attemptsForPendingText++;
         if (attemptsForPendingText > MAX_ATTEMPTS_PER_TEXT) {
             WnacgPasteStore.clear(this);
@@ -152,6 +152,5 @@ public class WnacgAccessibilityService extends AccessibilityService {
     private void resetAttempts() {
         lastPendingText = "";
         attemptsForPendingText = 0;
-        lastAttemptTime = 0;
     }
 }
