@@ -46,6 +46,7 @@ import java.util.Locale;
 public class SettingsActivity extends Activity {
     private static final String APPEARANCE_PREFS = "appearance";
     private static final String KEY_DARK_MODE = "dark_mode";
+    private static final int HISTORY_PAGE_SIZE = 20;
     private static final long MOTION_FAST_MS = 80;
     private static final long MOTION_NORMAL_MS = 160;
 
@@ -66,6 +67,9 @@ public class SettingsActivity extends Activity {
     private TextView clipboardStatus;
     private TextView clipboardHint;
     private String lastHistoryFingerprint;
+    private int visibleHistoryCount = HISTORY_PAGE_SIZE;
+    private View expandedHistoryPanel;
+    private TextView expandedHistoryIndicator;
     private final Interpolator motionInterpolator = new PathInterpolator(0.2f, 0f, 0f, 1f);
     private final SimpleDateFormat timeFormatter = new SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault());
     private boolean motionEnabled;
@@ -141,12 +145,34 @@ public class SettingsActivity extends Activity {
         topRow.setOrientation(LinearLayout.HORIZONTAL);
         topRow.setGravity(Gravity.CENTER_VERTICAL);
 
+        LinearLayout brand = new LinearLayout(this);
+        brand.setOrientation(LinearLayout.HORIZONTAL);
+        brand.setGravity(Gravity.CENTER_VERTICAL);
+
         TextView title = new TextView(this);
         title.setText("nhentai快捷");
         title.setTextColor(COLOR_TEXT);
-        title.setTextSize(26);
+        title.setTextSize(24);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        topRow.addView(title, new LinearLayout.LayoutParams(0,
+        brand.addView(title, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        TextView version = new TextView(this);
+        version.setText("v" + getVersionName());
+        version.setTextColor(COLOR_PRIMARY);
+        version.setTextSize(12);
+        version.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        version.setGravity(Gravity.CENTER);
+        version.setPadding(dp(7), dp(3), dp(7), dp(3));
+        version.setBackground(roundedBg(COLOR_PRIMARY_SOFT, 8, 0, 0));
+        LinearLayout.LayoutParams versionParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        versionParams.leftMargin = dp(8);
+        brand.addView(version, versionParams);
+
+        topRow.addView(brand, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
         final Switch themeSwitch = new Switch(this);
@@ -359,17 +385,27 @@ public class SettingsActivity extends Activity {
     }
 
     private void renderHistory() {
+        renderHistory(false);
+    }
+
+    private void renderHistory(boolean force) {
         if (historyContainer == null) {
             return;
         }
 
         List<HistoryEntry> entries = HistoryStore.list(this);
         String fingerprint = historyFingerprint(entries);
-        if (fingerprint.equals(lastHistoryFingerprint)) {
+        boolean changed = !fingerprint.equals(lastHistoryFingerprint);
+        if (!force && !changed) {
             return;
         }
 
+        if (changed) {
+            visibleHistoryCount = HISTORY_PAGE_SIZE;
+        }
         lastHistoryFingerprint = fingerprint;
+        expandedHistoryPanel = null;
+        expandedHistoryIndicator = null;
         historyContainer.removeAllViews();
         if (entries.size() == 0) {
             LinearLayout emptyCard = makeCard();
@@ -382,13 +418,18 @@ public class SettingsActivity extends Activity {
             return;
         }
 
-        for (int i = 0; i < entries.size(); i++) {
+        int visibleCount = Math.min(visibleHistoryCount, entries.size());
+        for (int i = 0; i < visibleCount; i++) {
             addHistoryRow(historyContainer, entries.get(i));
+        }
+
+        if (visibleCount < entries.size()) {
+            addLoadMoreButton(historyContainer, entries.size() - visibleCount);
         }
     }
 
     private void addHistoryRow(LinearLayout root, final HistoryEntry entry) {
-        final LinearLayout card = makeCard();
+        final LinearLayout card = makeHistoryCard();
 
         LinearLayout top = new LinearLayout(this);
         top.setOrientation(LinearLayout.HORIZONTAL);
@@ -413,13 +454,24 @@ public class SettingsActivity extends Activity {
         top.addView(status, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        final TextView indicator = new TextView(this);
+        indicator.setText(">");
+        indicator.setTextColor(COLOR_MUTED);
+        indicator.setTextSize(20);
+        indicator.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams indicatorParams = new LinearLayout.LayoutParams(
+                dp(28), ViewGroup.LayoutParams.WRAP_CONTENT);
+        indicatorParams.leftMargin = dp(4);
+        top.addView(indicator, indicatorParams);
         card.addView(top, matchWrap());
 
         TextView title = new TextView(this);
         title.setText(entry.title);
         title.setTextColor(HistoryStore.isUsefulTitle(entry.title) ? COLOR_TEXT : COLOR_MUTED);
         title.setTextSize(16);
-        title.setMaxLines(3);
+        title.setMaxLines(2);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
         title.setPadding(0, dp(8), 0, 0);
         card.addView(title, matchWrap());
 
@@ -429,6 +481,10 @@ public class SettingsActivity extends Activity {
         time.setTextSize(13);
         time.setPadding(0, dp(6), 0, 0);
         card.addView(time, matchWrap());
+
+        final LinearLayout details = new LinearLayout(this);
+        details.setOrientation(LinearLayout.VERTICAL);
+        details.setVisibility(View.GONE);
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -468,7 +524,7 @@ public class SettingsActivity extends Activity {
 
         LinearLayout.LayoutParams actionsParams = matchWrap();
         actionsParams.topMargin = dp(12);
-        card.addView(actions, actionsParams);
+        details.addView(actions, actionsParams);
 
         if (entry.diagnostic != null && entry.diagnostic.length() > 0) {
             final TextView diagnosticText = new TextView(this);
@@ -493,11 +549,31 @@ public class SettingsActivity extends Activity {
                     diagnosticToggle.setText(show ? "隱藏診斷" : "顯示診斷");
                 }
             });
-            card.addView(diagnosticToggle, matchWrap());
-            card.addView(diagnosticText, matchWrap());
+            details.addView(diagnosticToggle, matchWrap());
+            details.addView(diagnosticText, matchWrap());
         }
 
+        card.addView(details, matchWrap());
+        card.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                toggleHistoryDetails(details, indicator);
+            }
+        });
+
         root.addView(card, cardParams(dp(10)));
+    }
+
+    private void addLoadMoreButton(LinearLayout root, int remaining) {
+        Button more = makeButton("顯示更多（" + remaining + "）", COLOR_BUTTON, COLOR_TEXT);
+        more.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                visibleHistoryCount += HISTORY_PAGE_SIZE;
+                renderHistory(true);
+            }
+        });
+        root.addView(more, cardParams(dp(10)));
     }
 
     private String statusText(String title) {
@@ -597,6 +673,20 @@ public class SettingsActivity extends Activity {
         card.setBackground(roundedBg(COLOR_CARD, 8, COLOR_BORDER, 1));
         card.setElevation(0f);
         card.setStateListAnimator(null);
+        return card;
+    }
+
+    private LinearLayout makeHistoryCard() {
+        LinearLayout card = makeCard();
+        Drawable surface = roundedBg(COLOR_CARD, 8, COLOR_BORDER, 1);
+        int rippleColor = darkMode
+                ? Color.argb(36, 255, 255, 255)
+                : Color.argb(24, 25, 31, 42);
+        card.setBackground(new RippleDrawable(
+                ColorStateList.valueOf(rippleColor), surface, null));
+        card.setClickable(true);
+        card.setFocusable(true);
+        attachPressMotion(card);
         return card;
     }
 
@@ -735,6 +825,44 @@ public class SettingsActivity extends Activity {
                 .start();
     }
 
+    private void toggleHistoryDetails(View panel, TextView indicator) {
+        boolean collapseCurrent = expandedHistoryPanel == panel
+                && panel.getVisibility() == View.VISIBLE;
+        if (expandedHistoryPanel != null && expandedHistoryPanel != panel) {
+            setPanelVisible(expandedHistoryPanel, false);
+            rotateIndicator(expandedHistoryIndicator, 0f);
+        }
+
+        if (collapseCurrent) {
+            setPanelVisible(panel, false);
+            rotateIndicator(indicator, 0f);
+            expandedHistoryPanel = null;
+            expandedHistoryIndicator = null;
+            return;
+        }
+
+        expandedHistoryPanel = panel;
+        expandedHistoryIndicator = indicator;
+        setPanelVisible(panel, true);
+        rotateIndicator(indicator, 90f);
+    }
+
+    private void rotateIndicator(TextView indicator, float rotation) {
+        if (indicator == null) {
+            return;
+        }
+        indicator.animate().cancel();
+        if (!motionEnabled) {
+            indicator.setRotation(rotation);
+            return;
+        }
+        indicator.animate()
+                .rotation(rotation)
+                .setDuration(120L)
+                .setInterpolator(motionInterpolator)
+                .start();
+    }
+
     private void styleCompactAction(Button button) {
         button.setTextSize(13);
         button.setMinHeight(dp(44));
@@ -754,6 +882,17 @@ public class SettingsActivity extends Activity {
                     .append(entry.timestamp).append('\u0002');
         }
         return builder.toString();
+    }
+
+    private String getVersionName() {
+        try {
+            String version = getPackageManager()
+                    .getPackageInfo(getPackageName(), 0)
+                    .versionName;
+            return version == null ? "" : version;
+        } catch (Exception ignored) {
+            return "";
+        }
     }
 
     private boolean resolveDarkMode() {

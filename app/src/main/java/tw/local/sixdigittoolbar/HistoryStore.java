@@ -12,7 +12,7 @@ import java.util.List;
 final class HistoryStore {
     private static final String PREFS = "history";
     private static final String KEY_ITEMS = "items";
-    private static final int MAX_ITEMS = 50;
+    private static final int MAX_ITEMS = 200;
     private static final long FETCH_IN_PROGRESS_COOLDOWN_MS = 120000;
     private static final long FAILED_FETCH_COOLDOWN_MS = 1800000;
     private static ArrayList<HistoryEntry> cachedEntries;

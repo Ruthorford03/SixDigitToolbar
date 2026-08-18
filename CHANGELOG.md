@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.8
+
+- Show the installed app version beside the app name.
+- Collapse history actions by default and reveal one record's actions when its card is tapped.
+- Limit titles to two lines in the collapsed state and add a familiar expansion indicator.
+- Retain up to 200 records while initially rendering only 20, with 20-record incremental loading.
+
 ## 2.7
 
 - Schedule bounded paste retries after the wnacg startup grace period instead of relying on new accessibility events.
