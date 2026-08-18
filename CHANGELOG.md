@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.4
+
+- Remove card and button elevation shadows; retain clean one-pixel borders and ripple feedback.
+- Add a persistent dark-mode switch with a complete dark palette.
+- Follow the system dark setting until the user makes an explicit choice.
+- Explicitly synchronize OriginOS status and navigation bar icon colors with the selected theme.
+
 ## 2.3
 
 - Optimize edge-to-edge insets for Android 16 gesture navigation and display cutouts.

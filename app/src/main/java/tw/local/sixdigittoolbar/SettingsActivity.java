@@ -5,10 +5,13 @@ import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.SharedPreferences;
+import android.content.res.Configuration;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Insets;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
@@ -26,6 +29,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.view.animation.Interpolator;
 import android.view.animation.PathInterpolator;
@@ -33,6 +37,7 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -43,17 +48,23 @@ import java.util.List;
 import java.util.Locale;
 
 public class SettingsActivity extends Activity {
-    private static final int COLOR_BG = Color.rgb(246, 247, 251);
-    private static final int COLOR_CARD = Color.WHITE;
-    private static final int COLOR_TEXT = Color.rgb(25, 31, 42);
-    private static final int COLOR_MUTED = Color.rgb(105, 113, 128);
-    private static final int COLOR_BORDER = Color.rgb(224, 228, 236);
-    private static final int COLOR_PRIMARY = Color.rgb(28, 101, 214);
-    private static final int COLOR_PRIMARY_SOFT = Color.rgb(229, 239, 255);
-    private static final int COLOR_SUCCESS = Color.rgb(20, 132, 84);
-    private static final int COLOR_WARNING = Color.rgb(183, 106, 0);
+    private static final String APPEARANCE_PREFS = "appearance";
+    private static final String KEY_DARK_MODE = "dark_mode";
     private static final long MOTION_FAST_MS = 100;
     private static final long MOTION_NORMAL_MS = 260;
+
+    private int COLOR_BG;
+    private int COLOR_CARD;
+    private int COLOR_BUTTON;
+    private int COLOR_TEXT;
+    private int COLOR_MUTED;
+    private int COLOR_BORDER;
+    private int COLOR_PRIMARY;
+    private int COLOR_PRIMARY_SOFT;
+    private int COLOR_SUCCESS;
+    private int COLOR_SUCCESS_BG;
+    private int COLOR_WARNING;
+    private int COLOR_WARNING_BG;
 
     private LinearLayout historyContainer;
     private TextView clipboardStatus;
@@ -65,10 +76,13 @@ public class SettingsActivity extends Activity {
     private ViewGroup rootContainer;
     private View entranceRoot;
     private Runnable entranceRunnable;
+    private boolean darkMode;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        darkMode = resolveDarkMode();
+        applyPalette();
         motionEnabled = shouldUseMotion();
         configureWindowForAndroid16();
 
@@ -91,6 +105,7 @@ public class SettingsActivity extends Activity {
         addHistory(root);
 
         setContentView(scrollView);
+        applySystemBarAppearance();
         root.requestApplyInsets();
         playScreenEntrance(root);
     }
@@ -128,12 +143,43 @@ public class SettingsActivity extends Activity {
     private void addHeader(LinearLayout root) {
         LinearLayout card = makeCard();
 
+        LinearLayout topRow = new LinearLayout(this);
+        topRow.setOrientation(LinearLayout.HORIZONTAL);
+        topRow.setGravity(Gravity.CENTER_VERTICAL);
+
         TextView title = new TextView(this);
         title.setText("nhentai快捷");
         title.setTextColor(COLOR_TEXT);
         title.setTextSize(26);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        card.addView(title, matchWrap());
+        topRow.addView(title, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+
+        final Switch themeSwitch = new Switch(this);
+        themeSwitch.setText("深色");
+        themeSwitch.setTextColor(COLOR_MUTED);
+        themeSwitch.setTextSize(13);
+        themeSwitch.setGravity(Gravity.CENTER_VERTICAL);
+        themeSwitch.setChecked(darkMode);
+        themeSwitch.setThumbTintList(switchThumbColors());
+        themeSwitch.setTrackTintList(switchTrackColors());
+        themeSwitch.setOnCheckedChangeListener(new android.widget.CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(android.widget.CompoundButton buttonView, boolean checked) {
+                if (checked == darkMode) {
+                    return;
+                }
+                getSharedPreferences(APPEARANCE_PREFS, Context.MODE_PRIVATE)
+                        .edit()
+                        .putBoolean(KEY_DARK_MODE, checked)
+                        .apply();
+                recreate();
+            }
+        });
+        topRow.addView(themeSwitch, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+        card.addView(topRow, matchWrap());
 
         TextView subtitle = new TextView(this);
         subtitle.setText("複製 6 位數後，回來直接前往");
@@ -189,7 +235,7 @@ public class SettingsActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
 
-        Button pasteTitle = makeButton("更新標題", Color.WHITE, COLOR_TEXT);
+        Button pasteTitle = makeButton("更新標題", COLOR_BUTTON, COLOR_TEXT);
         pasteTitle.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -198,7 +244,7 @@ public class SettingsActivity extends Activity {
         });
         row.addView(pasteTitle, weightedButtonParams(0));
 
-        Button accessibility = makeButton("貼上助手", Color.WHITE, COLOR_TEXT);
+        Button accessibility = makeButton("貼上助手", COLOR_BUTTON, COLOR_TEXT);
         accessibility.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -245,6 +291,9 @@ public class SettingsActivity extends Activity {
         urlInput.setSingleLine(true);
         urlInput.setInputType(InputType.TYPE_TEXT_VARIATION_URI);
         urlInput.setText(UrlStore.getBaseUrl(this));
+        urlInput.setTextColor(COLOR_TEXT);
+        urlInput.setHintTextColor(COLOR_MUTED);
+        urlInput.setBackgroundTintList(ColorStateList.valueOf(COLOR_PRIMARY));
         urlInput.setSelectAllOnFocus(false);
         LinearLayout.LayoutParams inputParams = matchWrap();
         inputParams.topMargin = dp(8);
@@ -296,7 +345,7 @@ public class SettingsActivity extends Activity {
         header.addView(historyTitle, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
-        Button clear = makeButton("清除", Color.WHITE, COLOR_MUTED);
+        Button clear = makeButton("清除", COLOR_BUTTON, COLOR_MUTED);
         clear.setMinHeight(dp(40));
         clear.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -400,7 +449,7 @@ public class SettingsActivity extends Activity {
         boolean stackActions = shouldStackHistoryActions();
         actions.setOrientation(stackActions ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
 
-        Button open = makeButton("前往", Color.WHITE, COLOR_TEXT);
+        Button open = makeButton("前往", COLOR_BUTTON, COLOR_TEXT);
         open.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -412,7 +461,7 @@ public class SettingsActivity extends Activity {
         });
         actions.addView(open, historyActionParams(stackActions, 0));
 
-        Button wnacg = makeButton("搜尋wnacg", Color.WHITE, COLOR_TEXT);
+        Button wnacg = makeButton("搜尋wnacg", COLOR_BUTTON, COLOR_TEXT);
         wnacg.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -421,7 +470,7 @@ public class SettingsActivity extends Activity {
         });
         actions.addView(wnacg, historyActionParams(stackActions, dp(8)));
 
-        Button paste = makeButton("貼上標題", Color.WHITE, COLOR_TEXT);
+        Button paste = makeButton("貼上標題", COLOR_BUTTON, COLOR_TEXT);
         paste.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -484,9 +533,9 @@ public class SettingsActivity extends Activity {
 
     private int statusBg(String title) {
         if (HistoryStore.isUsefulTitle(title)) {
-            return Color.rgb(225, 246, 236);
+            return COLOR_SUCCESS_BG;
         }
-        return Color.rgb(255, 242, 219);
+        return COLOR_WARNING_BG;
     }
 
     private String formatTime(long timestamp) {
@@ -560,7 +609,8 @@ public class SettingsActivity extends Activity {
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(16), dp(15), dp(16), dp(15));
         card.setBackground(roundedBg(COLOR_CARD, 14, COLOR_BORDER, 1));
-        card.setElevation(dp(1));
+        card.setElevation(0f);
+        card.setStateListAnimator(null);
         return card;
     }
 
@@ -571,10 +621,13 @@ public class SettingsActivity extends Activity {
         button.setTextSize(15);
         button.setTextColor(textColor);
         button.setMinHeight(dp(48));
-        int borderColor = bgColor == Color.WHITE ? COLOR_BORDER : bgColor;
+        button.setElevation(0f);
+        button.setTranslationZ(0f);
+        button.setStateListAnimator(null);
+        int borderColor = bgColor == COLOR_BUTTON ? COLOR_BORDER : bgColor;
         Drawable shape = roundedBg(bgColor, 12, borderColor, 1);
-        int rippleColor = bgColor == Color.WHITE
-                ? Color.argb(28, 25, 31, 42)
+        int rippleColor = bgColor == COLOR_BUTTON
+                ? (darkMode ? Color.argb(42, 255, 255, 255) : Color.argb(28, 25, 31, 42))
                 : Color.argb(48, 255, 255, 255);
         button.setBackground(new RippleDrawable(ColorStateList.valueOf(rippleColor), shape, null));
         attachPressMotion(button);
@@ -699,6 +752,68 @@ public class SettingsActivity extends Activity {
         return builder.toString();
     }
 
+    private boolean resolveDarkMode() {
+        SharedPreferences preferences = getSharedPreferences(APPEARANCE_PREFS, Context.MODE_PRIVATE);
+        if (preferences.contains(KEY_DARK_MODE)) {
+            return preferences.getBoolean(KEY_DARK_MODE, false);
+        }
+        int nightMode = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
+        return nightMode == Configuration.UI_MODE_NIGHT_YES;
+    }
+
+    private void applyPalette() {
+        if (darkMode) {
+            COLOR_BG = Color.rgb(15, 18, 23);
+            COLOR_CARD = Color.rgb(25, 30, 38);
+            COLOR_BUTTON = Color.rgb(31, 37, 47);
+            COLOR_TEXT = Color.rgb(242, 245, 250);
+            COLOR_MUTED = Color.rgb(168, 177, 190);
+            COLOR_BORDER = Color.rgb(53, 61, 73);
+            COLOR_PRIMARY = Color.rgb(105, 167, 255);
+            COLOR_PRIMARY_SOFT = Color.rgb(24, 49, 83);
+            COLOR_SUCCESS = Color.rgb(105, 211, 168);
+            COLOR_SUCCESS_BG = Color.rgb(23, 59, 47);
+            COLOR_WARNING = Color.rgb(255, 192, 113);
+            COLOR_WARNING_BG = Color.rgb(68, 49, 22);
+        } else {
+            COLOR_BG = Color.rgb(246, 247, 251);
+            COLOR_CARD = Color.WHITE;
+            COLOR_BUTTON = Color.WHITE;
+            COLOR_TEXT = Color.rgb(25, 31, 42);
+            COLOR_MUTED = Color.rgb(105, 113, 128);
+            COLOR_BORDER = Color.rgb(224, 228, 236);
+            COLOR_PRIMARY = Color.rgb(28, 101, 214);
+            COLOR_PRIMARY_SOFT = Color.rgb(229, 239, 255);
+            COLOR_SUCCESS = Color.rgb(20, 132, 84);
+            COLOR_SUCCESS_BG = Color.rgb(225, 246, 236);
+            COLOR_WARNING = Color.rgb(183, 106, 0);
+            COLOR_WARNING_BG = Color.rgb(255, 242, 219);
+        }
+    }
+
+    private ColorStateList switchThumbColors() {
+        int[][] states = new int[][] {
+                new int[] {android.R.attr.state_checked},
+                new int[] {-android.R.attr.state_checked}
+        };
+        return new ColorStateList(states, new int[] {COLOR_PRIMARY, COLOR_MUTED});
+    }
+
+    private ColorStateList switchTrackColors() {
+        int[][] states = new int[][] {
+                new int[] {android.R.attr.state_checked},
+                new int[] {-android.R.attr.state_checked}
+        };
+        return new ColorStateList(states, new int[] {
+                withAlpha(COLOR_PRIMARY, 110),
+                withAlpha(COLOR_BORDER, 190)
+        });
+    }
+
+    private int withAlpha(int color, int alpha) {
+        return Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color));
+    }
+
     private boolean shouldUseMotion() {
         PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
         if (powerManager != null && powerManager.isPowerSaveMode()) {
@@ -713,8 +828,10 @@ public class SettingsActivity extends Activity {
 
     private void configureWindowForAndroid16() {
         Window window = getWindow();
-        window.setStatusBarColor(Color.TRANSPARENT);
-        window.setNavigationBarColor(Color.TRANSPARENT);
+        window.setBackgroundDrawable(new ColorDrawable(COLOR_BG));
+        window.getDecorView().setBackgroundColor(COLOR_BG);
+        window.setStatusBarColor(COLOR_BG);
+        window.setNavigationBarColor(COLOR_BG);
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -736,6 +853,34 @@ public class SettingsActivity extends Activity {
             window.setFrameRatePowerSavingsBalanced(true);
             window.setFrameRateBoostOnTouchEnabled(true);
         }
+    }
+
+    private void applySystemBarAppearance() {
+        Window window = getWindow();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowInsetsController controller = window.getInsetsController();
+            if (controller == null) {
+                return;
+            }
+            int mask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                    | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+            controller.setSystemBarsAppearance(darkMode ? 0 : mask, mask);
+            return;
+        }
+
+        View decor = window.getDecorView();
+        int flags = decor.getSystemUiVisibility();
+        flags &= ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            flags &= ~View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+        }
+        if (!darkMode) {
+            flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+            }
+        }
+        decor.setSystemUiVisibility(flags);
     }
 
     private void applySystemInsets(final View root) {
