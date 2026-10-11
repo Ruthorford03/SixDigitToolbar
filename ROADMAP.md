@@ -187,10 +187,10 @@
 - [x] **遙控派發預留**：卡片加入「存在電腦」派發端點。
 
 ### 階段二：電腦端自動化管線建立（路線 C 後台）
-- [ ] 使用 `uv` 初始化 `manga-vault-bridge` 專案。
-- [ ] 撰寫 nhentai 生肉自動下載模組。
-- [ ] 串接 `folder_translator.py` 進行無人值守背景批次漢化。
-- [ ] 提供標準書籍清單與圖片串流 REST API。
+- [x] 使用 `uv` 初始化 `manga-vault-bridge` 專案。
+- [x] 撰寫 nhentai 生肉自動下載模組。
+- [x] 串接 `folder_translator.py` 進行無人值守背景批次漢化。
+- [x] 提供標準書籍清單與圖片串流 REST API。
 
 ### 階段三：手機私有閱讀器打通（路線 C 前端）
 - [ ] 在 `PrivateComicReader`（或專用閱讀器客戶端）中實作私有書庫瀏覽分頁。
