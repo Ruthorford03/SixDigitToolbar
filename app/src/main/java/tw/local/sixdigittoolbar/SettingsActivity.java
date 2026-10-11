@@ -39,6 +39,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -77,6 +78,7 @@ public class SettingsActivity extends Activity {
     private Runnable entranceRunnable;
     private View activePressView;
     private boolean darkMode;
+    private String currentSearchFilter = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -217,6 +219,15 @@ public class SettingsActivity extends Activity {
         clipboardStatus.setBackground(roundedBg(COLOR_PRIMARY_SOFT, 18, 0, 0));
         LinearLayout.LayoutParams statusParams = matchWrap();
         statusParams.topMargin = dp(14);
+        clipboardStatus.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                String code = MainActivity.extractSixDigitCode(readClipboardText());
+                if (code == null) {
+                    showManualInputDialog();
+                }
+            }
+        });
         card.addView(clipboardStatus, statusParams);
 
         clipboardHint = new TextView(this);
@@ -226,6 +237,42 @@ public class SettingsActivity extends Activity {
         card.addView(clipboardHint, matchWrap());
 
         root.addView(card, cardParams(0));
+    }
+
+    private void showManualInputDialog() {
+        final EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_NUMBER);
+        input.setSingleLine(true);
+        input.setHint("請輸入 6 位數字代碼");
+        input.setTextColor(COLOR_TEXT);
+        input.setHintTextColor(COLOR_MUTED);
+        input.setBackgroundTintList(ColorStateList.valueOf(COLOR_PRIMARY));
+        input.setPadding(dp(16), dp(12), dp(16), dp(12));
+
+        LinearLayout wrapper = new LinearLayout(this);
+        wrapper.setOrientation(LinearLayout.VERTICAL);
+        wrapper.setPadding(dp(20), dp(10), dp(20), 0);
+        wrapper.addView(input, matchWrap());
+
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("手動輸入代碼")
+                .setView(wrapper)
+                .setPositiveButton("前往", new android.content.DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(android.content.DialogInterface dialog, int which) {
+                        String text = input.getText().toString().trim();
+                        String code = MainActivity.extractSixDigitCode(text);
+                        if (code == null) {
+                            Toast.makeText(SettingsActivity.this, "請輸入有效的 6 位數字", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        String url = MainActivity.buildTargetUrl(UrlStore.getBaseUrl(SettingsActivity.this), code);
+                        TitleFetchService.fetch(SettingsActivity.this, code, url);
+                        MainActivity.openBrowser(SettingsActivity.this, url);
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
     }
 
     private void addPrimaryActions(LinearLayout root) {
@@ -254,6 +301,15 @@ public class SettingsActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
 
+        Button manualInput = makeButton("手動輸入", COLOR_BUTTON, COLOR_TEXT);
+        manualInput.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                showManualInputDialog();
+            }
+        });
+        row.addView(manualInput, weightedButtonParams(0));
+
         Button pasteTitle = makeButton("更新標題", COLOR_BUTTON, COLOR_TEXT);
         pasteTitle.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -261,7 +317,7 @@ public class SettingsActivity extends Activity {
                 updateTitleFromClipboard(null);
             }
         });
-        row.addView(pasteTitle, weightedButtonParams(0));
+        row.addView(pasteTitle, weightedButtonParams(dp(8)));
 
         Button accessibility = makeButton("貼上助手", COLOR_BUTTON, COLOR_TEXT);
         accessibility.setOnClickListener(new View.OnClickListener() {
@@ -270,7 +326,7 @@ public class SettingsActivity extends Activity {
                 WnacgLauncher.openAccessibilitySettings(SettingsActivity.this);
             }
         });
-        row.addView(accessibility, weightedButtonParams(dp(10)));
+        row.addView(accessibility, weightedButtonParams(dp(8)));
 
         LinearLayout.LayoutParams rowParams = matchWrap();
         rowParams.topMargin = dp(10);
@@ -366,8 +422,18 @@ public class SettingsActivity extends Activity {
         clear.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                HistoryStore.clear(SettingsActivity.this);
-                renderHistory();
+                new android.app.AlertDialog.Builder(SettingsActivity.this)
+                        .setTitle("清除紀錄")
+                        .setMessage("確定要清除所有查詢紀錄嗎？")
+                        .setPositiveButton("確定清除", new android.content.DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(android.content.DialogInterface dialog, int which) {
+                                HistoryStore.clear(SettingsActivity.this);
+                                renderHistory(true);
+                            }
+                        })
+                        .setNegativeButton("取消", null)
+                        .show();
             }
         });
         header.addView(clear, new LinearLayout.LayoutParams(dp(88),
@@ -376,6 +442,33 @@ public class SettingsActivity extends Activity {
         LinearLayout.LayoutParams headerParams = matchWrap();
         headerParams.topMargin = dp(20);
         root.addView(header, headerParams);
+
+        final EditText searchInput = new EditText(this);
+        searchInput.setHint("搜尋代碼或作品標題...");
+        searchInput.setSingleLine(true);
+        searchInput.setTextSize(14);
+        searchInput.setTextColor(COLOR_TEXT);
+        searchInput.setHintTextColor(COLOR_MUTED);
+        searchInput.setBackground(roundedBg(COLOR_CARD, 8, COLOR_BORDER, 1));
+        searchInput.setPadding(dp(14), dp(10), dp(14), dp(10));
+        searchInput.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                currentSearchFilter = s == null ? "" : s.toString().trim().toLowerCase();
+                renderHistory(true);
+            }
+
+            @Override
+            public void afterTextChanged(android.text.Editable s) {
+            }
+        });
+        LinearLayout.LayoutParams searchParams = matchWrap();
+        searchParams.topMargin = dp(10);
+        root.addView(searchInput, searchParams);
 
         historyContainer = new LinearLayout(this);
         historyContainer.setOrientation(LinearLayout.VERTICAL);
@@ -393,8 +486,21 @@ public class SettingsActivity extends Activity {
             return;
         }
 
-        List<HistoryEntry> entries = HistoryStore.list(this);
-        String fingerprint = historyFingerprint(entries);
+        List<HistoryEntry> allEntries = HistoryStore.list(this);
+        List<HistoryEntry> entries = new ArrayList<HistoryEntry>();
+        if (currentSearchFilter != null && currentSearchFilter.length() > 0) {
+            for (int i = 0; i < allEntries.size(); i++) {
+                HistoryEntry e = allEntries.get(i);
+                if ((e.code != null && e.code.contains(currentSearchFilter))
+                        || (e.title != null && e.title.toLowerCase().contains(currentSearchFilter))) {
+                    entries.add(e);
+                }
+            }
+        } else {
+            entries = allEntries;
+        }
+
+        String fingerprint = currentSearchFilter + "|" + historyFingerprint(entries);
         boolean changed = !fingerprint.equals(lastHistoryFingerprint);
         if (!force && !changed) {
             return;
@@ -410,7 +516,7 @@ public class SettingsActivity extends Activity {
         if (entries.size() == 0) {
             LinearLayout emptyCard = makeCard();
             TextView empty = new TextView(this);
-            empty.setText("還沒有紀錄");
+            empty.setText(currentSearchFilter.length() > 0 ? "沒有符合搜尋條件的紀錄" : "還沒有紀錄");
             empty.setTextColor(COLOR_MUTED);
             empty.setTextSize(15);
             emptyCard.addView(empty, matchWrap());
@@ -521,6 +627,28 @@ public class SettingsActivity extends Activity {
             }
         });
         actions.addView(paste, weightedButtonParams(dp(8)));
+
+        Button delete = makeButton("刪除", COLOR_BUTTON, COLOR_WARNING);
+        styleCompactAction(delete);
+        delete.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                new android.app.AlertDialog.Builder(SettingsActivity.this)
+                        .setTitle("刪除紀錄")
+                        .setMessage("確定要刪除代碼 " + entry.code + " 的紀錄嗎？")
+                        .setPositiveButton("刪除", new android.content.DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(android.content.DialogInterface dialog, int which) {
+                                HistoryStore.delete(SettingsActivity.this, entry.code);
+                                Toast.makeText(SettingsActivity.this, "已刪除", Toast.LENGTH_SHORT).show();
+                                renderHistory(true);
+                            }
+                        })
+                        .setNegativeButton("取消", null)
+                        .show();
+            }
+        });
+        actions.addView(delete, weightedButtonParams(dp(8)));
 
         LinearLayout.LayoutParams actionsParams = matchWrap();
         actionsParams.topMargin = dp(12);

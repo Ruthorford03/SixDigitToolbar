@@ -69,13 +69,20 @@ public class TitleFetchService extends IntentService {
     }
 
     private static FetchResult fetchTitle(String code, String urlText) {
-        FetchResult apiV2 = fetchJapaneseTitleFromApi(code, true);
+        String customApiBase = getApiBase(urlText);
+        FetchResult apiV2 = fetchJapaneseTitleFromApi(code, customApiBase, true);
         if (isUsefulTitle(apiV2.title)) {
             return apiV2;
         }
-        FetchResult apiV1 = fetchJapaneseTitleFromApi(code, false);
+        FetchResult apiV1 = fetchJapaneseTitleFromApi(code, customApiBase, false);
         if (isUsefulTitle(apiV1.title)) {
             return apiV1;
+        }
+        if (!"https://nhentai.net".equals(customApiBase)) {
+            FetchResult fallbackV2 = fetchJapaneseTitleFromApi(code, "https://nhentai.net", true);
+            if (isUsefulTitle(fallbackV2.title)) {
+                return fallbackV2;
+            }
         }
         if (apiV2.blocked && apiV1.blocked) {
             return new FetchResult("標題讀取失敗",
@@ -90,7 +97,18 @@ public class TitleFetchService extends IntentService {
                 html.blocked && (apiV2.blocked || apiV1.blocked));
     }
 
-    private static FetchResult fetchJapaneseTitleFromApi(String code, boolean v2) {
+    private static String getApiBase(String urlText) {
+        try {
+            if (urlText != null && (urlText.startsWith("http://") || urlText.startsWith("https://"))) {
+                URL u = new URL(urlText);
+                return u.getProtocol() + "://" + u.getHost();
+            }
+        } catch (Exception ignored) {
+        }
+        return "https://nhentai.net";
+    }
+
+    private static FetchResult fetchJapaneseTitleFromApi(String code, String baseHost, boolean v2) {
         if (code == null || code.length() == 0) {
             return new FetchResult("", "api: empty code");
         }
@@ -98,9 +116,10 @@ public class TitleFetchService extends IntentService {
         HttpURLConnection connection = null;
         String label = v2 ? "apiV2" : "apiV1";
         try {
+            String host = baseHost == null || baseHost.length() == 0 ? "https://nhentai.net" : baseHost;
             URL url = new URL(v2
-                    ? "https://nhentai.net/api/v2/galleries/" + code
-                    : "https://nhentai.net/api/gallery/" + code);
+                    ? host + "/api/v2/galleries/" + code
+                    : host + "/api/gallery/" + code);
             connection = openConnection(url);
             int status = connection.getResponseCode();
             String json = readResponse(connection, 30000);
@@ -189,8 +208,9 @@ public class TitleFetchService extends IntentService {
         connection.setConnectTimeout(4500);
         connection.setReadTimeout(6000);
         connection.setUseCaches(false);
-        connection.setRequestProperty("User-Agent", "Mozilla/5.0");
-        connection.setRequestProperty("Accept", "application/json,text/html,*/*");
+        connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36");
+        connection.setRequestProperty("Accept", "application/json,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+        connection.setRequestProperty("Accept-Language", "ja,en-US;q=0.9,en;q=0.8,zh-TW;q=0.7");
         return connection;
     }
 
@@ -241,10 +261,7 @@ public class TitleFetchService extends IntentService {
     }
 
     private static boolean isUsefulTitle(String title) {
-        return title != null
-                && title.trim().length() > 0
-                && !"標題讀取中".equals(title)
-                && !"標題讀取失敗".equals(title);
+        return HistoryStore.isUsefulTitle(title);
     }
 
     private static String decodeEntities(String text) {

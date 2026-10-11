@@ -31,14 +31,13 @@ public class MainActivity extends Activity {
             return;
         }
 
-        if (HistoryStore.isUsefulTitle(title) && HistoryStore.updateTitle(this, code, title)) {
-            Toast.makeText(this, "已更新作品標題", Toast.LENGTH_LONG).show();
-            finish();
-            return;
-        }
-
         String url = buildTargetUrl(UrlStore.getBaseUrl(this), code);
-        TitleFetchService.fetch(this, code, url);
+        if (HistoryStore.isUsefulTitle(title)) {
+            HistoryStore.upsert(this, code, title, url);
+            Toast.makeText(this, "已儲存標題並前往", Toast.LENGTH_SHORT).show();
+        } else {
+            TitleFetchService.fetch(this, code, url);
+        }
         openBrowser(url);
         finish();
     }

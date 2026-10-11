@@ -56,11 +56,13 @@ final class HistoryStore {
                 return false;
             }
             if ("標題讀取中".equals(existing.title) && now - existing.timestamp < FETCH_IN_PROGRESS_COOLDOWN_MS) {
+                upsert(context, existing.code, existing.title, url, existing.diagnostic);
                 return false;
             }
             if ("標題讀取失敗".equals(existing.title)
                     && existing.diagnostic.indexOf("apiV2") >= 0
                     && now - existing.timestamp < FAILED_FETCH_COOLDOWN_MS) {
+                upsert(context, existing.code, existing.title, url, existing.diagnostic);
                 return false;
             }
         }
@@ -143,6 +145,22 @@ final class HistoryStore {
         return new ArrayList<HistoryEntry>(entries);
     }
 
+    static synchronized boolean delete(Context context, String code) {
+        if (code == null || code.length() == 0) {
+            return false;
+        }
+
+        ArrayList<HistoryEntry> current = new ArrayList<HistoryEntry>(list(context));
+        for (int i = 0; i < current.size(); i++) {
+            if (code.equals(current.get(i).code)) {
+                current.remove(i);
+                save(context, current);
+                return true;
+            }
+        }
+        return false;
+    }
+
     static synchronized void clear(Context context) {
         cachedEntries = new ArrayList<HistoryEntry>();
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -190,9 +208,20 @@ final class HistoryStore {
     }
 
     static boolean isUsefulTitle(String title) {
-        return title != null
-                && title.trim().length() > 0
-                && !"標題讀取中".equals(title)
-                && !"標題讀取失敗".equals(title);
+        if (title == null) {
+            return false;
+        }
+        String t = title.trim();
+        if (t.length() == 0 || "標題讀取中".equals(t) || "標題讀取失敗".equals(t)) {
+            return false;
+        }
+        String lower = t.toLowerCase();
+        return !lower.contains("just a moment")
+                && !lower.contains("cloudflare")
+                && !lower.contains("attention required")
+                && !lower.contains("access denied")
+                && !lower.contains("403 forbidden")
+                && !lower.contains("checking your browser")
+                && !lower.contains("robot check");
     }
 }
