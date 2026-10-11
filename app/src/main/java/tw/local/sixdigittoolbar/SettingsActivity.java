@@ -32,6 +32,7 @@ import android.view.animation.Interpolator;
 import android.view.animation.PathInterpolator;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Switch;
@@ -356,7 +357,7 @@ public class SettingsActivity extends Activity {
         card.addView(panel, panelParams);
 
         TextView hint = new TextView(this);
-        hint.setText("目前：" + UrlStore.getBaseUrl(this) + "\n可用 {code} 指定 6 位數位置；沒有 {code} 時會直接接在網址後方。");
+        hint.setText("nhentai 網址：\n可用 {code} 指定 6 位數位置；沒有 {code} 時會直接接在網址後方。");
         hint.setTextColor(COLOR_MUTED);
         hint.setTextSize(13);
         panel.addView(hint, matchWrap());
@@ -370,24 +371,71 @@ public class SettingsActivity extends Activity {
         urlInput.setBackgroundTintList(ColorStateList.valueOf(COLOR_PRIMARY));
         urlInput.setSelectAllOnFocus(false);
         LinearLayout.LayoutParams inputParams = matchWrap();
-        inputParams.topMargin = dp(8);
+        inputParams.topMargin = dp(6);
         panel.addView(urlInput, inputParams);
 
-        Button save = makeButton("儲存網址", COLOR_PRIMARY, Color.WHITE);
+        TextView jmHint = new TextView(this);
+        jmHint.setText("JMComic (禁漫天堂) 網域：");
+        jmHint.setTextColor(COLOR_MUTED);
+        jmHint.setTextSize(13);
+        LinearLayout.LayoutParams jmHintParams = matchWrap();
+        jmHintParams.topMargin = dp(10);
+        panel.addView(jmHint, jmHintParams);
+
+        final EditText jmInput = new EditText(this);
+        jmInput.setSingleLine(true);
+        jmInput.setHint("例如：18comic.vip");
+        jmInput.setText(UrlStore.getJmComicDomain(this));
+        jmInput.setTextColor(COLOR_TEXT);
+        jmInput.setHintTextColor(COLOR_MUTED);
+        jmInput.setBackgroundTintList(ColorStateList.valueOf(COLOR_PRIMARY));
+        LinearLayout.LayoutParams jmParams = matchWrap();
+        jmParams.topMargin = dp(6);
+        panel.addView(jmInput, jmParams);
+
+        TextView pcHint = new TextView(this);
+        pcHint.setText("電腦端派發端點 (路線 C 漢化管線)：");
+        pcHint.setTextColor(COLOR_MUTED);
+        pcHint.setTextSize(13);
+        LinearLayout.LayoutParams pcHintParams = matchWrap();
+        pcHintParams.topMargin = dp(10);
+        panel.addView(pcHint, pcHintParams);
+
+        final EditText pcInput = new EditText(this);
+        pcInput.setSingleLine(true);
+        pcInput.setHint("例如：http://192.168.1.100:8000/api/dispatch");
+        pcInput.setText(UrlStore.getDispatchPcUrl(this));
+        pcInput.setTextColor(COLOR_TEXT);
+        pcInput.setHintTextColor(COLOR_MUTED);
+        pcInput.setBackgroundTintList(ColorStateList.valueOf(COLOR_PRIMARY));
+        LinearLayout.LayoutParams pcParams = matchWrap();
+        pcParams.topMargin = dp(6);
+        panel.addView(pcInput, pcParams);
+
+        Button save = makeButton("儲存跨平台與網址設定", COLOR_PRIMARY, Color.WHITE);
         save.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 String url = urlInput.getText().toString().trim();
                 if (!url.startsWith("http://") && !url.startsWith("https://")) {
-                    Toast.makeText(SettingsActivity.this, "網址必須以 http:// 或 https:// 開頭", Toast.LENGTH_LONG).show();
+                    Toast.makeText(SettingsActivity.this, "nhentai 網址必須以 http:// 或 https:// 開頭", Toast.LENGTH_LONG).show();
                     return;
                 }
+                String jm = jmInput.getText().toString().trim();
+                String pc = pcInput.getText().toString().trim();
+
                 UrlStore.setBaseUrl(SettingsActivity.this, url);
-                Toast.makeText(SettingsActivity.this, "已儲存", Toast.LENGTH_SHORT).show();
+                if (jm.length() > 0) {
+                    UrlStore.setJmComicDomain(SettingsActivity.this, jm);
+                }
+                if (pc.length() > 0) {
+                    UrlStore.setDispatchPcUrl(SettingsActivity.this, pc);
+                }
+                Toast.makeText(SettingsActivity.this, "已儲存設定", Toast.LENGTH_SHORT).show();
             }
         });
         LinearLayout.LayoutParams saveParams = matchWrap();
-        saveParams.topMargin = dp(10);
+        saveParams.topMargin = dp(14);
         panel.addView(save, saveParams);
 
         toggle.setOnClickListener(new View.OnClickListener() {
@@ -592,10 +640,91 @@ public class SettingsActivity extends Activity {
         details.setOrientation(LinearLayout.VERTICAL);
         details.setVisibility(View.GONE);
 
-        LinearLayout actions = new LinearLayout(this);
-        actions.setOrientation(LinearLayout.HORIZONTAL);
+        // 1. 智慧解構標題與多維度候選晶片 (Search Chips)
+        final TitleDeconstructor.Result deconstruct = TitleDeconstructor.deconstruct(entry.title);
+        final List<String> candidateKeywords = deconstruct.candidateKeywords;
+        String defaultKw = deconstruct.cleanTitle.length() > 0 ? deconstruct.cleanTitle : entry.title;
+        final String[] selectedKw = new String[]{defaultKw};
 
-        Button open = makeButton("前往", COLOR_BUTTON, COLOR_TEXT);
+        if (HistoryStore.isUsefulTitle(entry.title) && candidateKeywords.size() > 0) {
+            TextView chipHeader = new TextView(this);
+            chipHeader.setText("搜尋關鍵字 (點選切換 / 長按複製)：");
+            chipHeader.setTextColor(COLOR_MUTED);
+            chipHeader.setTextSize(12);
+            chipHeader.setPadding(0, dp(10), 0, dp(4));
+            details.addView(chipHeader, matchWrap());
+
+            HorizontalScrollView hsv = new HorizontalScrollView(this);
+            hsv.setHorizontalScrollBarEnabled(false);
+            LinearLayout chipsRow = new LinearLayout(this);
+            chipsRow.setOrientation(LinearLayout.HORIZONTAL);
+
+            final List<TextView> chipViews = new ArrayList<>();
+            for (int i = 0; i < candidateKeywords.size(); i++) {
+                final String kw = candidateKeywords.get(i);
+                final TextView chip = new TextView(this);
+
+                String prefix = "🏷️ ";
+                if (kw.equals(deconstruct.simplifiedTitle) && !kw.equals(deconstruct.cleanTitle)) {
+                    prefix = "🇨🇳 ";
+                } else if (kw.equals(deconstruct.artist)) {
+                    prefix = "🎨 ";
+                } else if (kw.equals(deconstruct.circle)) {
+                    prefix = "🏛️ ";
+                } else if (kw.equals(deconstruct.rawTitle)) {
+                    prefix = "⛩️ ";
+                }
+
+                chip.setText(prefix + kw);
+                chip.setTextSize(13);
+                chip.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+                chip.setPadding(dp(10), dp(5), dp(10), dp(5));
+                attachPressMotion(chip);
+
+                final boolean isDefault = kw.equals(selectedKw[0]);
+                updateChipStyle(chip, isDefault);
+                chipViews.add(chip);
+
+                chip.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        selectedKw[0] = kw;
+                        for (int c = 0; c < chipViews.size(); c++) {
+                            TextView cv = chipViews.get(c);
+                            updateChipStyle(cv, cv == chip);
+                        }
+                        Toast.makeText(SettingsActivity.this, "已選擇搜尋詞：" + kw, Toast.LENGTH_SHORT).show();
+                    }
+                });
+
+                chip.setOnLongClickListener(new View.OnLongClickListener() {
+                    @Override
+                    public boolean onLongClick(View v) {
+                        ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                        if (cm != null) {
+                            cm.setPrimaryClip(ClipData.newPlainText("搜尋關鍵字", kw));
+                            Toast.makeText(SettingsActivity.this, "已複製：" + kw, Toast.LENGTH_SHORT).show();
+                        }
+                        return true;
+                    }
+                });
+
+                LinearLayout.LayoutParams chipParams = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                if (i > 0) {
+                    chipParams.leftMargin = dp(6);
+                }
+                chipsRow.addView(chip, chipParams);
+            }
+            hsv.addView(chipsRow);
+            details.addView(hsv, matchWrap());
+        }
+
+        // 2. 第一排動作：主流站點導航 (前往原站、wnacg、JM禁漫)
+        LinearLayout actionsRow1 = new LinearLayout(this);
+        actionsRow1.setOrientation(LinearLayout.HORIZONTAL);
+
+        Button open = makeButton("前往原站", COLOR_BUTTON, COLOR_TEXT);
         styleCompactAction(open);
         open.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -606,17 +735,73 @@ public class SettingsActivity extends Activity {
                 MainActivity.openBrowser(SettingsActivity.this, url);
             }
         });
-        actions.addView(open, weightedButtonParams(0));
+        actionsRow1.addView(open, weightedButtonParams(0));
 
         Button wnacg = makeButton("wnacg", COLOR_BUTTON, COLOR_TEXT);
         styleCompactAction(wnacg);
         wnacg.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                WnacgLauncher.search(SettingsActivity.this, entry.title);
+                MultiPlatformSearcher.searchWnacg(SettingsActivity.this, selectedKw[0]);
             }
         });
-        actions.addView(wnacg, weightedButtonParams(dp(8)));
+        actionsRow1.addView(wnacg, weightedButtonParams(dp(8)));
+
+        Button jmcomic = makeButton("JM禁漫", COLOR_BUTTON, COLOR_TEXT);
+        styleCompactAction(jmcomic);
+        jmcomic.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                MultiPlatformSearcher.searchJmComic(SettingsActivity.this, selectedKw[0]);
+            }
+        });
+        actionsRow1.addView(jmcomic, weightedButtonParams(dp(8)));
+
+        LinearLayout.LayoutParams row1Params = matchWrap();
+        row1Params.topMargin = dp(12);
+        details.addView(actionsRow1, row1Params);
+
+        // 3. 第二排動作：廣域漢化與跨端派發 (E-H中文、Google漢化、💻傳電腦)
+        LinearLayout actionsRow2 = new LinearLayout(this);
+        actionsRow2.setOrientation(LinearLayout.HORIZONTAL);
+
+        Button ehentai = makeButton("E-H中文", COLOR_BUTTON, COLOR_TEXT);
+        styleCompactAction(ehentai);
+        ehentai.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                MultiPlatformSearcher.searchEHentai(SettingsActivity.this, selectedKw[0]);
+            }
+        });
+        actionsRow2.addView(ehentai, weightedButtonParams(0));
+
+        Button google = makeButton("Google搜", COLOR_BUTTON, COLOR_TEXT);
+        styleCompactAction(google);
+        google.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                MultiPlatformSearcher.searchGoogle(SettingsActivity.this, selectedKw[0]);
+            }
+        });
+        actionsRow2.addView(google, weightedButtonParams(dp(8)));
+
+        Button dispatchPc = makeButton("💻傳電腦", COLOR_BUTTON, COLOR_PRIMARY);
+        styleCompactAction(dispatchPc);
+        dispatchPc.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                MultiPlatformSearcher.dispatchToPc(SettingsActivity.this, entry.code, entry.title);
+            }
+        });
+        actionsRow2.addView(dispatchPc, weightedButtonParams(dp(8)));
+
+        LinearLayout.LayoutParams row2Params = matchWrap();
+        row2Params.topMargin = dp(8);
+        details.addView(actionsRow2, row2Params);
+
+        // 4. 第三排動作：輔助維護 (貼標題、刪除紀錄)
+        LinearLayout actionsRow3 = new LinearLayout(this);
+        actionsRow3.setOrientation(LinearLayout.HORIZONTAL);
 
         Button paste = makeButton("貼標題", COLOR_BUTTON, COLOR_TEXT);
         styleCompactAction(paste);
@@ -626,9 +811,9 @@ public class SettingsActivity extends Activity {
                 updateTitleFromClipboard(entry.code);
             }
         });
-        actions.addView(paste, weightedButtonParams(dp(8)));
+        actionsRow3.addView(paste, weightedButtonParams(0));
 
-        Button delete = makeButton("刪除", COLOR_BUTTON, COLOR_WARNING);
+        Button delete = makeButton("刪除紀錄", COLOR_BUTTON, COLOR_WARNING);
         styleCompactAction(delete);
         delete.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -648,11 +833,11 @@ public class SettingsActivity extends Activity {
                         .show();
             }
         });
-        actions.addView(delete, weightedButtonParams(dp(8)));
+        actionsRow3.addView(delete, weightedButtonParams(dp(8)));
 
-        LinearLayout.LayoutParams actionsParams = matchWrap();
-        actionsParams.topMargin = dp(12);
-        details.addView(actions, actionsParams);
+        LinearLayout.LayoutParams row3Params = matchWrap();
+        row3Params.topMargin = dp(8);
+        details.addView(actionsRow3, row3Params);
 
         if (entry.diagnostic != null && entry.diagnostic.length() > 0) {
             final TextView diagnosticText = new TextView(this);
@@ -1219,5 +1404,15 @@ public class SettingsActivity extends Activity {
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private void updateChipStyle(TextView chip, boolean isSelected) {
+        if (isSelected) {
+            chip.setTextColor(Color.WHITE);
+            chip.setBackground(roundedBg(COLOR_PRIMARY, 12, 0, 0));
+        } else {
+            chip.setTextColor(COLOR_TEXT);
+            chip.setBackground(roundedBg(COLOR_BUTTON, 12, 1, COLOR_BORDER));
+        }
     }
 }

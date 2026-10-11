@@ -4,4 +4,6 @@
     <string name="process_label">前往nhentai</string>
     <string name="accessibility_service_label">nhentai快捷貼上助手</string>
     <string name="default_base_url">https://nhentai.net/g/</string>
+    <string name="default_jmcomic_domain">18comic.vip</string>
+    <string name="default_dispatch_pc_url">http://192.168.1.100:8000/api/dispatch</string>
 </resources>
